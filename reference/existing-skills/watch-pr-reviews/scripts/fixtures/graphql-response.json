@@ -1,0 +1,54 @@
+{
+  "data": {
+    "viewer": { "login": "alice" },
+    "search": {
+      "issueCount": 2,
+      "nodes": [
+        {
+          "number": 12,
+          "headRefName": "feat/menu",
+          "reviews": {
+            "pageInfo": { "hasNextPage": false },
+            "nodes": [
+              { "id": "R_empty", "author": { "login": "bob" }, "state": "COMMENTED", "body": "", "url": "https://example.test/r/empty" },
+              { "id": "R_summary", "author": { "login": "bob" }, "state": "CHANGES_REQUESTED", "body": "Two points.", "url": "https://example.test/r/summary" },
+              { "id": "R_bot", "author": { "login": "review-bot" }, "state": "COMMENTED", "body": "Automated note.", "url": "https://example.test/r/bot" }
+            ]
+          },
+          "reviewThreads": {
+            "pageInfo": { "hasNextPage": false },
+            "nodes": [
+              {
+                "id": "T_open",
+                "isResolved": false,
+                "path": "src/menu.ts",
+                "line": 42,
+                "comments": {
+                  "nodes": [
+                    { "id": "C_bob", "author": { "login": "bob" }, "body": "Sort this.", "url": "https://example.test/c/bob" },
+                    { "id": "C_alice", "author": { "login": "alice" }, "body": "Done.", "url": "https://example.test/c/alice" }
+                  ]
+                }
+              },
+              {
+                "id": "T_resolved",
+                "isResolved": true,
+                "path": "src/menu.ts",
+                "line": 7,
+                "comments": { "nodes": [ { "id": "C_resolved", "author": { "login": "bob" }, "body": "Old.", "url": "https://example.test/c/resolved" } ] }
+              },
+              {
+                "id": "T_outdated",
+                "isResolved": false,
+                "path": "src/old.ts",
+                "line": null,
+                "comments": { "nodes": [ { "id": "C_ghost", "author": null, "body": "From a deleted account.", "url": "https://example.test/c/ghost" } ] }
+              }
+            ]
+          }
+        },
+        {}
+      ]
+    }
+  }
+}

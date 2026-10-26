@@ -1,0 +1,3 @@
+C_bob	12	feat/menu	thread	T_open	src/menu.ts:42	bob	https://example.test/c/bob
+C_ghost	12	feat/menu	thread	T_outdated	src/old.ts:outdated	ghost	https://example.test/c/ghost
+R_summary	12	feat/menu	review-changes_requested	-	-	bob	https://example.test/r/summary

@@ -1,0 +1,9 @@
+{
+  "name": "ticket-flow",
+  "version": "0.1.0",
+  "description": "Carry a Jira ticket to a reviewed merge request with Claude Code agents",
+  "author": { "name": "Your team" },
+  "dependencies": [
+    { "name": "superpowers", "marketplace": "claude-plugins-official" }
+  ]
+}

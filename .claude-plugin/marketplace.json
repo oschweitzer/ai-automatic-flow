@@ -1,0 +1,13 @@
+{
+  "name": "ai-automatic-flow",
+  "owner": { "name": "Your team" },
+  "description": "Claude Code plugins for carrying Jira tickets to reviewed merge requests",
+  "allowCrossMarketplaceDependenciesOn": ["claude-plugins-official"],
+  "plugins": [
+    {
+      "name": "ticket-flow",
+      "source": "./plugins/ticket-flow",
+      "description": "Jira ticket to merge request flow"
+    }
+  ]
+}
