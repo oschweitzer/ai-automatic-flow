@@ -1,0 +1,99 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap");
+
+/* Ticket Flow Dashboard components. Every value comes from tokens.css. */
+html, body { background: var(--bg); color: var(--text); color-scheme: dark; }
+body { margin: 0; font-family: var(--font-sans); font-size: 14px; line-height: 1.45; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+::selection { background: var(--accent); color: var(--on-accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.tf-icon { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.tf-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-8); padding: var(--space-14); }
+.tf-stack { display: flex; flex-direction: column; gap: var(--space-14); padding: var(--space-14); }
+
+/* Button */
+.tf-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-8); padding: 10px 16px; border-radius: var(--radius-md); font: 500 14px/1.2 var(--font-sans); cursor: pointer; text-decoration: none; border: 1px solid transparent; transition: background .15s, border-color .15s, color .15s; }
+.tf-btn-primary { background: var(--accent); color: var(--on-accent); }
+.tf-btn-primary:hover { background: var(--accent-strong); }
+.tf-btn-ghost { background: transparent; color: var(--text); border-color: var(--control-border); }
+.tf-btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+.tf-btn[disabled] { opacity: .45; cursor: not-allowed; }
+.tf-btn-block { width: 100%; }
+
+/* Chip */
+.tf-chip { padding: 6px 12px; border-radius: var(--radius-pill); border: 1px solid var(--control-border); background: transparent; color: var(--text-2); font: 400 13px/1.2 var(--font-sans); cursor: pointer; }
+.tf-chip:hover { color: var(--text); border-color: var(--text-3); }
+.tf-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
+
+/* Avatar */
+.tf-avatar { width: 30px; height: 30px; border-radius: var(--radius-pill); display: inline-grid; place-items: center; font: 600 11px/1 var(--font-sans); color: var(--text); border: 2px solid transparent; opacity: .4; cursor: pointer; transition: opacity .15s; padding: 0; }
+.tf-avatar:hover { opacity: .8; }
+.tf-avatar[aria-pressed="true"] { opacity: 1; border-color: var(--accent); }
+
+/* StatusPill */
+.tf-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: var(--radius-pill); font: 500 12px/1.3 var(--font-sans); white-space: nowrap; }
+.tf-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.tf-pill-you { background: var(--you-soft); color: var(--you); }
+.tf-pill-client { background: var(--client-soft); color: var(--client); }
+.tf-pill-ok { background: var(--ok-soft); color: var(--ok); }
+.tf-pill-bad { background: var(--bad-soft); color: var(--bad); }
+.tf-pill-run { background: var(--accent-soft); color: var(--accent); }
+.tf-pill-mute { background: var(--surface-2); color: var(--text-3); }
+.tf-pill-mute::before { display: none; }
+
+/* StageTrack: the signature, one dot per flow stage */
+.tf-track { min-width: 170px; }
+.tf-track-bar { position: relative; height: 22px; display: flex; align-items: center; }
+.tf-track-rail { position: absolute; left: 4px; right: 4px; height: 1px; background: var(--line-2); }
+.tf-track-fill { position: absolute; left: 4px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--violet), var(--accent)); }
+.tf-track-dots { position: relative; display: flex; justify-content: space-between; width: 100%; }
+.tf-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--surface); border: 1px solid var(--line-2); }
+.tf-dot-done { background: var(--accent); border-color: var(--accent); }
+.tf-dot-now { width: 12px; height: 12px; margin: -2px; background: var(--bg); border: 2px solid var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.tf-dot-fail { border-color: var(--bad); box-shadow: 0 0 0 4px var(--bad-soft); }
+.tf-track-caption { margin-top: 3px; font-size: 12px; color: var(--text-2); }
+.tf-track-caption b { font-weight: 500; color: var(--text); }
+
+/* StepList */
+.tf-steps { list-style: none; margin: 0; padding: 0; position: relative; }
+.tf-steps::before { content: ""; position: absolute; left: 6px; top: 8px; bottom: 8px; width: 1px; background: var(--line-2); }
+.tf-step { position: relative; display: flex; gap: var(--space-12); align-items: baseline; padding: 5px 0; font-size: 13px; color: var(--text-3); }
+.tf-step-dot { width: 13px; height: 13px; border-radius: 50%; flex: none; position: relative; top: 2px; background: var(--surface); border: 1px solid var(--line-2); }
+.tf-step-done { color: var(--text-2); }
+.tf-step-done .tf-step-dot { background: var(--accent); border-color: var(--accent); }
+.tf-step-now { color: var(--text); }
+.tf-step-now .tf-step-dot { background: var(--bg); border: 2px solid var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.tf-step-fail { color: var(--text); }
+.tf-step-fail .tf-step-dot { background: var(--bg); border: 2px solid var(--bad); box-shadow: 0 0 0 4px var(--bad-soft); }
+.tf-step-note { margin-left: auto; font-size: 12px; color: var(--text-3); }
+.tf-step-fail .tf-step-note { color: var(--bad); }
+
+/* Section */
+.tf-section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+.tf-section > summary { list-style: none; display: flex; align-items: center; gap: var(--space-10); padding: var(--space-14) var(--space-18); cursor: pointer; font-size: 15px; }
+.tf-section > summary::-webkit-details-marker { display: none; }
+.tf-section-chev { color: var(--text-3); transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
+.tf-section[open] > summary .tf-section-chev { transform: rotate(90deg); }
+.tf-section-count { font-size: 12px; color: var(--text-3); }
+.tf-section table { width: 100%; border-collapse: collapse; }
+.tf-section th { font: 500 12px/1.3 var(--font-sans); color: var(--text-3); text-align: left; padding: var(--space-8) var(--space-18); border-top: 1px solid var(--line); }
+.tf-section td { padding: var(--space-12) var(--space-18); border-top: 1px solid var(--line); vertical-align: middle; }
+.tf-section tr.tf-clickable { cursor: pointer; }
+.tf-section tr.tf-clickable:hover, .tf-section tr[aria-selected="true"] { background: var(--surface-2); }
+.tf-key { color: var(--accent); font-weight: 500; }
+.tf-sub { display: block; color: var(--text-3); font-size: 12.5px; }
+
+/* NavItem */
+.tf-nav { display: flex; align-items: center; gap: var(--space-10); width: 100%; padding: 9px 10px; border-radius: var(--radius-nav); background: transparent; border: 0; color: var(--text-2); font: 400 14px/1.3 var(--font-sans); text-align: left; cursor: pointer; }
+.tf-nav:hover { background: var(--surface); color: var(--text); }
+.tf-nav[aria-current="page"] { background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-2); }
+.tf-nav-sub { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
+.tf-nav-count { margin-left: auto; min-width: 22px; text-align: center; font-size: 12px; padding: 1px 7px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); }
+
+/* ActionCard: the one violet surface, for what waits on you */
+.tf-action { border-radius: var(--radius-lg); padding: var(--space-20); background: radial-gradient(120% 90% at 100% 100%, var(--violet) 0%, var(--violet-deep) 45%, var(--violet-night) 80%); border: 1px solid var(--violet-deep); }
+.tf-action h2 { margin: 0 0 4px; font: 300 26px/1.15 var(--font-sans); letter-spacing: -.01em; color: var(--text); }
+.tf-action p { margin: 0 0 16px; color: var(--on-violet); font-size: 13px; }
+.tf-action-item { display: flex; align-items: center; gap: var(--space-10); width: 100%; padding: 11px 12px; margin-bottom: var(--space-8); border-radius: var(--radius-md); background: var(--violet-night); border: 1px solid var(--violet-deep); color: var(--text); font: 400 14px/1.35 var(--font-sans); text-align: left; cursor: pointer; }
+.tf-action-item:hover { border-color: var(--accent); }
+.tf-action-item span { flex: 1; min-width: 0; }
+.tf-action-item small { display: block; font-size: 12px; color: var(--on-violet); }
