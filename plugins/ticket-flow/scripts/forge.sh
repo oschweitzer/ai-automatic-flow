@@ -270,11 +270,15 @@ gh_issue_read() {
     echo "forge.sh: #$n is a pull request" >&2
     return 1
   fi
-  comments="$(gh api --paginate "repos/$repo/issues/$n/comments" | jq -s 'add // []')"
-  subs="$(gh api --paginate "repos/$repo/issues/$n/sub_issues" | jq -s 'add // [] | [.[].number]')"
+  # The issue and its comments go through stdin: a long issue or discussion is bigger than one
+  # command-line argument may be (128 KiB on Linux).
+  comments="$(gh api --paginate "repos/$repo/issues/$n/comments" |
+    jq -s 'add // [] | [.[] | {user: {login: .user.login}, author_association, body, created_at}]')"
+  # A server without sub-issues fails here, which only means there are none.
+  subs="$(gh api --paginate "repos/$repo/issues/$n/sub_issues" 2>/dev/null | jq -s 'add // [] | [.[].number]')" || subs='[]'
   # GitHub answers 404 when the issue has no parent.
   parent="$(gh api "repos/$repo/issues/$n/parent" 2>/dev/null | jq '.number // null')" || parent=null
-  jq -n --argjson i "$issue" --argjson c "$comments" --argjson s "$subs" --argjson p "$parent" '
+  printf '%s\n%s\n' "$issue" "$comments" | jq -s --argjson s "$subs" --argjson p "$parent" '.[0] as $i | .[1] as $c |
     ($c | map(select(.author_association == "OWNER" or .author_association == "MEMBER"
       or .author_association == "COLLABORATOR" or .user.login == $i.user.login))) as $kept
     | { number: $i.number, url: $i.html_url, title: $i.title, body: ($i.body // ""),

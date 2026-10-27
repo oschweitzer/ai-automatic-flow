@@ -78,7 +78,11 @@ case "\$*" in
   "api --paginate repos/acme/shop/issues/142/comments") cat "$F/gh-issue-142-comments.json" ;;
   "api --paginate repos/acme/shop/issues/150/comments") echo '[]' ;;
   "api --paginate repos/acme/shop/issues/142/sub_issues") cat "$F/gh-issue-142-sub-issues.json" ;;
-  "api --paginate repos/acme/shop/issues/150/sub_issues") echo '[]' ;;
+  "api --paginate repos/acme/shop/issues/150/sub_issues") echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+  "api repos/acme/shop/issues/160") jq '.number = 160' "$F/gh-issue-142.json" ;;
+  "api --paginate repos/acme/shop/issues/160/comments") cat "$WORK/long-comments.json" ;;
+  "api --paginate repos/acme/shop/issues/160/sub_issues") echo '[]' ;;
+  "api repos/acme/shop/issues/160/parent") echo '{"message": "Not Found"}'; exit 1 ;;
   "api repos/acme/shop/issues/142/parent") echo '{"message": "Not Found", "status": "404"}'; echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
   "api repos/acme/shop/issues/150/parent") cat "$F/gh-issue-150-parent.json" ;;
   "api repos/acme/shop/issues -f title=Part 1 -f body="*) echo '{"id": 987654, "number": 152}' ;;
@@ -104,6 +108,12 @@ check "issue-read reports the URL" \
 check "issue-read lists sub-issues" "150 151" "$(forge issue-read 142 | jq -r '.sub_issues | join(" ")')"
 check "an issue without parent has a null parent" "null" "$(forge issue-read 142 | jq -r .parent)"
 check "an issue with a parent" "142 null" "$(forge issue-read 150 | jq -r '"\(.parent) \(.type)"')"
+check "issue-read survives a repository without sub-issues" "150 0" "$(forge issue-read 150 | jq -r '"\(.number) \(.sub_issues | length)"')"
+# 200 comments of about 1 KB each pass 128 KiB, the limit of one command-line argument on Linux.
+jq -n --arg body "$(printf 'x%.0s' $(seq 1 1000))" \
+  '[range(200) | {user: {login: "dev-bob"}, author_association: "COLLABORATOR", body: $body, created_at: "2026-10-20T08:00:00Z"}]' \
+  >"$WORK/long-comments.json"
+check "issue-read handles a long discussion" "200" "$(forge issue-read 160 | jq '.comments | length')"
 check "issue-read refuses a pull request" "forge.sh: #143 is a pull request" "$(forge issue-read 143 2>&1 >/dev/null || true)"
 
 echo "[ticket-flow] Part 1 of #142" >"$WORK/part.md"
