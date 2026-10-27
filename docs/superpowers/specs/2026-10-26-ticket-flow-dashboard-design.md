@@ -96,7 +96,7 @@ The plugin is still a draft with no real run, so it changes first, in a small wa
 
 - A `waiting` event with an `on` field, written when a stage starts waiting on something outside the session: `on: "developer"` when the plan gate asks for approval, `on: "ci"` while ci-gate waits for the pipeline, `on: "reviews"` while mr-loop waits for comments. The next `start`, `end` or `end_state` line closes the wait.
 - A `model` field on the `start` line of every stage that launches a model (the planner and executor choice the detail panel shows).
-- A `published` event when `/ticket-flow:handover <KEY> --publish` posts the client steps on Jira.
+- A `published` event when `/ticket-flow:handover <KEY> --publish` posts the client steps on the ticket (Jira or the GitHub issue).
 - Triage accepts a run folder whose end state is `parked_needs_info` and starts again, appending to the same log, so a parked ticket can run again once the client answers. Today it refuses any existing run folder.
 - `conventions.md` documents these fields, and the "never write a secret" rule still applies.
 

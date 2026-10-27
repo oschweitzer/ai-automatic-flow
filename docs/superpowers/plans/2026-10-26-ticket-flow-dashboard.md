@@ -140,9 +140,9 @@ pub struct Placement { pub section: Section, pub waiting_on: Option<WaitingOn>, 
 pub fn classify(run: Option<&RunState>, ticket: Option<&TrackerTicket>, mr: Option<&MrStatus>, now: DateTime<Utc>) -> Placement;
 ```
 
-- [ ] **Step 1: Write one failing test per row of the spec's state table** (`docs/superpowers/specs/2026-10-26-ticket-flow-dashboard-design.md`, "How states are read") and per override: `waiting_developer_is_plan_to_approve`, `waiting_ci_is_in_progress`, `ready_for_qa_open_mr_is_mr_to_merge`, `ready_for_qa_merged_is_client_steps`, `ready_for_qa_published_is_done`, `split_is_done`, `parked_is_waiting_client`, `each_blocked_end_state_waits_on_you` (loop over the six), `running_is_in_progress`, `stale_after_30_minutes` (last `start` 45 minutes before `now` gives `stale_minutes == Some(45)`), `waits_are_never_stale`, `jira_done_overrides_run`, `closed_mr_is_mr_closed`, `no_run_follows_jira_category` (three cases), `issue_completed_overrides_run`, `no_run_open_issue_is_todo`, `no_run_assigned_open_issue_is_still_todo`, `not_planned_is_done_with_its_reason`. Build `RunState` values inline with a small test helper.
+- [ ] **Step 1: Write one failing test per row of the spec's state table** (`docs/superpowers/specs/2026-10-26-ticket-flow-dashboard-design.md`, "How states are read") and per override: `waiting_developer_is_plan_to_approve`, `waiting_ci_is_in_progress`, `ready_for_qa_open_mr_is_mr_to_merge`, `ready_for_qa_merged_is_client_steps`, `ready_for_qa_published_is_done`, `split_is_done`, `parked_is_waiting_client`, `each_blocked_end_state_waits_on_you` (loop over the six), `running_is_in_progress`, `stale_after_30_minutes` (last `start` 45 minutes before `now` gives `stale_minutes == Some(45)`), `waits_are_never_stale`, `jira_done_overrides_run`, `closed_mr_is_mr_closed`, `no_run_follows_jira_category` (three cases), `issue_completed_overrides_run`, `no_run_open_issue_is_todo`, `no_run_assigned_open_issue_is_still_todo`, `not_planned_is_done_with_its_reason`, `not_planned_overrides_a_parked_run`. Build `RunState` values inline with a small test helper.
 - [ ] **Step 2: Run** `cargo test classify::`. Expected: FAIL.
-- [ ] **Step 3: Implement** `classify`. Order: Jira Done override or issue closed as completed, then merged-and-published, then closed MR, then the run table, then, when there is no run, the Jira category or the issue state (open gives `IssueTodo` in À faire, completed `IssueDone` and not planned `IssueNotPlanned`, both in Terminé).
+- [ ] **Step 3: Implement** `classify`. Order: Jira Done override, or issue closed (completed gives `IssueDone`, not planned gives `IssueNotPlanned`, both in Terminé, whatever the run says), then merged-and-published, then closed MR, then the run table, then, when there is no run, the Jira category or the issue state (open gives `IssueTodo` in À faire, completed `IssueDone` and not planned `IssueNotPlanned`, both in Terminé).
 - [ ] **Step 4: Run** `cargo test classify::`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(dashboard): classify tickets into sections`.
 
@@ -167,9 +167,9 @@ pub fn discover(roots: &[PathBuf]) -> Vec<Repo>;                  // depth 3 bel
 pub fn group(repos: Vec<Repo>) -> Vec<ProjectDef>;                // sorted by key
 ```
 
-- [ ] **Step 1: Write the failing tests:** `reads_profile_frontmatter` (frontmatter with `forge: gitlab   # detected` and `jira_project: SHOP` gives `(Some(Gitlab), Some("SHOP"))`, using the same comment-stripping case as `plugins/ticket-flow/tests/test-checks.sh`), `profile_without_jira_project`, `malformed_frontmatter_is_not_fatal` (no closing `---`: returns `(None, None)`), `discovers_only_repos_with_profile`, `skips_heavy_folders` (a profile inside `node_modules/x/` is ignored), `groups_by_jira_project` (two repos with `SHOP` give one project with two repos), `tracker_defaults_to_jira`, `github_tracker_repo_is_its_own_project` (two GitHub-tracker repos with the same empty `jira_project` give two projects), `ssh_and_https_remotes_parse` (`git@github.com:acme/shop.git` and `https://github.com/acme/shop` give `acme/shop`, a gitlab.com URL gives `None`).
+- [ ] **Step 1: Write the failing tests:** `reads_profile_frontmatter` (frontmatter with `forge: gitlab   # detected` and `jira_project: SHOP` gives `(Some(Gitlab), Jira, Some("SHOP"))`, using the same comment-stripping case as `plugins/ticket-flow/tests/test-checks.sh`), `profile_without_jira_project`, `malformed_frontmatter_is_not_fatal` (no closing `---`: returns `(None, Jira, None)`), `discovers_only_repos_with_profile`, `skips_heavy_folders` (a profile inside `node_modules/x/` is ignored), `groups_by_jira_project` (two repos with `SHOP` give one project with two repos), `tracker_defaults_to_jira`, `github_tracker_repo_is_its_own_project` (two GitHub-tracker repos with the same empty `jira_project` give two projects), `ssh_and_https_remotes_parse` (`git@github.com:acme/shop.git` and `https://github.com/acme/shop` give `acme/shop`, a gitlab.com URL gives `None`), `skips_linked_worktrees` (a folder whose `.git` is a file pointing into another repository's `.git/worktrees/` is not a repository, so the flow's `<repo>.worktrees/<KEY>` folders never become projects).
 - [ ] **Step 2: Run** `cargo test repos::`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Read only the lines between the first two `---` lines, take top-level `key: value` pairs, strip a trailing `# comment` and surrounding quotes. No YAML crate. Skip folders named `node_modules`, `target`, `dist`, `vendor`, and any starting with `.` except `.claude` when reading the profile. A folder that holds a profile is not searched further. `remote` comes from reading `.git/config` (or the `gitdir` a `.git` file points to), never from running git.
+- [ ] **Step 3: Implement.** Read only the lines between the first two `---` lines, take top-level `key: value` pairs, strip a trailing `# comment` and surrounding quotes. No YAML crate. Skip folders named `node_modules`, `target`, `dist`, `vendor`, and any starting with `.` except `.claude` when reading the profile. A folder that holds a profile is not searched further. A folder whose `.git` is a file (a linked worktree) is skipped. `remote` comes from reading `.git/config`, never from running git.
 - [ ] **Step 4: Run** `cargo test repos::`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(dashboard): discover repositories and group projects`.
 
@@ -261,7 +261,7 @@ pub fn parse_issue(v: &serde_json::Value, base_url: &str, sprint_id: Option<u64>
 pub struct Track { pub current: u8, pub total: u8, pub stage: String, pub failed: bool }
 pub struct Ticket {
     pub key: String, pub project: String, pub summary: String, pub issue_type: Option<String>,
-    pub repo: Option<String>, pub sprint_id: Option<u64>, pub assignee: Option<Person>,
+    pub repo: Option<String>, pub sprint_id: Option<u64>, pub assignees: Vec<Person>,                 // Jira: zero or one
     pub local_run: bool, pub placement: Placement, pub track: Option<Track>, pub steps: Vec<StepInfo>,
     pub mr: Option<MrStatus>, pub ticket_url: Option<String>, pub ticket_status: Option<String>, // Jira status, or the issue state
     pub labels: Vec<String>,                                                                     // GitHub issues only
@@ -272,20 +272,20 @@ pub struct Ticket {
 pub struct ProjectView { pub key: String, pub tracker: Tracker, pub repos: Vec<String>, pub forge: Option<Forge>, pub public: bool,
                          pub sprints: Vec<Sprint>, pub has_sprints: bool } // GitHub tracker: has_sprints false
 pub struct SourceState { pub configured: bool, pub ok: bool, pub error: Option<String>, pub last_ok_at: Option<DateTime<Utc>> }
-pub struct Snapshot { pub me: Option<Person>, pub projects: Vec<ProjectView>, pub tickets: Vec<Ticket>,
+pub struct Snapshot { pub me_jira: Option<Person>, pub me_github: Option<Person>, pub projects: Vec<ProjectView>, pub tickets: Vec<Ticket>,
                       pub people: Vec<Person>, pub jira: SourceState, pub forge: SourceState, pub synced_at: DateTime<Utc> }
 
 pub fn build(projects: &[ProjectDef], runs: &[(String, RunState)],      // (repo name, run)
              jira: &[JiraProject], issues: &HashMap<String, Vec<GithubIssue>>, // issues by project key
              mrs: &HashMap<String, MrStatus>,                            // by ticket key
-             me: Option<&Person>, now: DateTime<Utc>) -> Vec<Ticket>;
+             me_jira: Option<&Person>, me_github: Option<&Person>, now: DateTime<Utc>) -> Vec<Ticket>;
 ```
 
 Tauri commands: `get_snapshot() -> Snapshot`, `refresh()`, `get_settings() -> SettingsView` (`Settings` plus `has_token: bool`), `save_settings(settings: Settings, token: Option<String>)`. Event `snapshot` with a `Snapshot` payload, emitted after every rebuild.
 
 `sync.rs` holds the state in a `tokio::sync::Mutex`. Local rebuilds come from a `notify` watcher on each repo's `.ticket-flow/runs/` (recursive, debounced 500 ms). Remote fetches run every 120 s, and on `refresh` and `save_settings`. Remote fetches pause while the main window is hidden or minimised. On a remote error, the previous Jira or forge data is kept and only the `SourceState` changes. Without settings or token, `jira.configured = false` and only local runs are listed for Jira projects. GitHub projects fetch their issues and visibility with the forge poll whatever the Jira settings, and keep their last data on error like the rest. Their ticket keys are `GH-<number>`, matching the run folders, and "me" for them is the `gh` login.
 
-- [ ] **Step 1: Write the failing tests:** `local_run_without_jira_uses_ticket_md_summary`, `local_run_is_mine_whatever_the_assignee` (the ticket's `assignee` stays the Jira one and `local_run` is true. The front end relies on that flag), `jira_only_ticket_has_no_track`, `track_marks_failed_when_ci_red` (run at ci-gate and MR `Ci::Red` gives `track.failed`), `people_are_unique_and_sorted`, `paths_point_into_run_dir` (`plan_path` ends with `plan.json`, `handover_path` only when `handover.md` exists), `github_project_without_jira_token` (a GitHub-tracker project lists its issues with `jira.configured = false`), `github_ticket_links_to_issue` (`ticket_url` is the issue URL, `ticket_status` is `open`, the key is `GH-142`).
+- [ ] **Step 1: Write the failing tests:** `local_run_without_jira_uses_ticket_md_summary`, `local_run_is_mine_whatever_the_assignee` (the ticket's `assignees` stay the tracker's and `local_run` is true. The front end relies on that flag), `jira_only_ticket_has_no_track`, `track_marks_failed_when_ci_red` (run at ci-gate and MR `Ci::Red` gives `track.failed`), `people_are_unique_and_sorted`, `paths_point_into_run_dir` (`plan_path` ends with `plan.json`, `handover_path` only when `handover.md` exists), `github_project_without_jira_token` (a GitHub-tracker project lists its issues with `jira.configured = false`), `github_ticket_links_to_issue` (`ticket_url` is the issue URL, `ticket_status` is `open`, the key is `GH-142`).
 - [ ] **Step 2: Run** `cargo test snapshot::`. Expected: FAIL.
 - [ ] **Step 3: Implement** `build`, then `sync.rs` and the commands. Register `tauri_plugin_opener::init()`.
 - [ ] **Step 4: Run** `cargo test`. Expected: all Rust tests PASS.
@@ -309,13 +309,13 @@ export function t(lang: Lang, key: string, vars?: Record<string, string | number
 export interface ProjectPrefs { people: string[]; sprints: (number | 'backlog')[]; open: Section[] } // people: accountIds, '__me__', '__unassigned__'
 export function loadPrefs(project: string, p: ProjectView): ProjectPrefs;   // defaults: ['__me__'], active sprints (all, or [] when !hasSprints), ['inProgress','waiting']
 export function savePrefs(project: string, prefs: ProjectPrefs): void;      // localStorage key "tf.prefs.<project>", try/catch
-export function visible(tickets: Ticket[], project: string, prefs: ProjectPrefs, me: Person | null, query: string): Ticket[]; // query: case-insensitive match on key or summary, '' matches all
+export function visible(tickets: Ticket[], project: string, prefs: ProjectPrefs, me: Person | null, query: string): Ticket[]; // me: meJira or meGithub, by the project's tracker // query: case-insensitive match on key or summary, '' matches all
 export function bySection(tickets: Ticket[]): Record<Section, Ticket[]>;   // order inside: waiting on you first, then by lastActivity desc
 export function counts(tickets: Ticket[]): { you: number; client: number; inProgress: number; ciRed: number; todo: number; done: number };
 export function useSnapshot(): { snapshot: Snapshot | null; refresh(): Promise<void> };
 ```
 
-Rules in `visible`: a ticket with `localRun` passes the person filter whenever `'__me__'` is selected. `'__unassigned__'` matches `assignee == null` without a local run. Sprint filter: `sprintId` in the selection, or `'backlog'` selected and `sprintId == null`. When `hasSprints` is false, the sprint filter is skipped.
+Rules in `visible`: a ticket with `localRun` passes the person filter whenever `'__me__'` is selected. `'__unassigned__'` matches empty `assignees` without a local run. A person in the filter matches a ticket when they are any of its `assignees`. Sprint filter: `sprintId` in the selection, or `'backlog'` selected and `sprintId == null`. When `hasSprints` is false, the sprint filter is skipped.
 
 Copy keys: one per `Reason` (French and English, French text exactly as in the spec: "plan à valider", "MR à tester et merger", "étapes client à publier", "client · précision demandée", "attend la CI", "attend les retours", "sans nouvelle depuis {n} min", "en cours chez {initials}", "MR fermée"), `issue_todo`, `issue_done`, `issue_not_planned` ("fermée sans suite" / "closed as not planned"), the group labels "Jira" and "GitHub", `public` ("public" in both languages), the section titles, "Tous les projets", "À toi de jouer", "Synchronisé il y a {age}", "Jira non configuré", and the settings labels.
 
