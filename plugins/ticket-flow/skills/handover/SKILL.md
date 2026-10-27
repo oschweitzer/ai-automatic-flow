@@ -1,14 +1,14 @@
 ---
 name: handover
-description: Use when a ticket-flow merge request has finished its review loop and the developer needs test steps, points of attention and a merge checklist, or when reviewed client test steps must be published on Jira.
-argument-hint: "<JIRA-KEY> [--publish]"
+description: Use when a ticket-flow merge request has finished its review loop and the developer needs test steps, points of attention and a merge checklist, or when reviewed client test steps must be published on the ticket.
+argument-hint: "<TICKET> [--publish]"
 disable-model-invocation: true
-allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *)
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh *)
 ---
 
 # Handover
 
-The ticket key is the first argument: `$0`. Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. With `--publish` as second argument, skip to the last section.
+Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. The ticket key is the output of `bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh "$0"`, run before anything else. On exit 1, show its message and stop. With `--publish` as second argument, skip to the last section.
 
 The goal: a developer can test the change, explain it to a colleague or the client, and know what could go wrong, without reading the code. Follow the structure of `${CLAUDE_SKILL_DIR}/example.md`.
 
@@ -39,6 +39,8 @@ Save them in `assets/` and upload each with `forge.sh upload <mr> <file>`, which
 7. Before merging: a checklist. Always CI, tests, manual test, open threads answered, client steps read. Add one line per configuration change, saying what to set, where, and on which environments (local, test environment, production). When a default exists, the line asks to confirm the default is fine. Last line: `/ticket-flow:handover <KEY> --publish` after deployment to the test environment.
 8. The client steps from section 4 below, inside `<details>`, marked as a draft.
 
+On GitHub, run `forge.sh visibility` first. When it prints `public`, the MR is public too: leave the test environment URL and account details out of `handover.md`, as the Public issues section says, and keep the other sections.
+
 Post it with `forge.sh upsert-note <mr> "ticket-flow:handover <KEY>" handover.md`, which updates the earlier comment on a rerun.
 
 ## 4. Draft the client steps
@@ -51,4 +53,4 @@ Run `forge.sh mark-ready <mr>`. Write the end state `ready_for_qa`. Tell the dev
 
 ## Publishing the client steps
 
-Only with `--publish`. Show `client-steps.md` and ask the developer to confirm they have read it and that the change is deployed on the test environment. On yes, post it on the Jira ticket, starting with `[ticket-flow]`. If it mentions files, remind the developer to attach them to the ticket by hand. Append a line with `stage: "handover"` and `event: "published"`.
+Only with `--publish`. Show `client-steps.md` and ask the developer to confirm they have read it and that the change is deployed on the test environment. On yes, post it on the ticket, starting with `[ticket-flow]`. On GitHub, follow the Public issues section first. If it mentions files, remind the developer to attach them to the ticket by hand. Append a line with `stage: "handover"` and `event: "published"`.

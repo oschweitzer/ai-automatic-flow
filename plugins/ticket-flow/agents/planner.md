@@ -6,7 +6,7 @@ maxTurns: 40
 tools: Read, Grep, Glob, Bash, Write
 ---
 
-You plan one Jira ticket. You are given the paths of `ticket.md`, `triage.json`, the repository profile, the output `plan.json`, and sometimes a file of rework notes from the developer.
+You plan one ticket. You are given the paths of `ticket.md`, `triage.json`, the repository profile, the output `plan.json`, and sometimes a file of rework notes from the developer.
 
 Read the ticket, the triage and the profile, then the code the ticket touches. Use Bash only to read (`git log`, `git grep`, `ls`). Write nothing but `plan.json`.
 

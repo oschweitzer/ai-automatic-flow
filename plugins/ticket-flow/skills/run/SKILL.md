@@ -1,16 +1,16 @@
 ---
 name: run
-description: Use when a Jira ticket should go through the whole ticket-flow, from triage to a merge request ready for manual testing, or when an interrupted run must resume.
-argument-hint: "<JIRA-KEY> [--resume]"
+description: Use when a ticket (Jira, or a GitHub issue) should go through the whole ticket-flow, from triage to a merge request ready for manual testing, or when an interrupted run must resume.
+argument-hint: "<TICKET> [--resume]"
 disable-model-invocation: true
-allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/checks.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/watch-mr-comments.sh *)
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/checks.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/watch-mr-comments.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh *)
 ---
 
 # Run the flow
 
-The ticket key is the first argument: `$0`. Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first.
+Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. The ticket key is the output of `bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh "$0"`, run before anything else. On exit 1, show its message and stop.
 
-Each stage is a skill of its own. Run a stage by reading its `SKILL.md` and following it with the same ticket key. They live next to this one: `${CLAUDE_SKILL_DIR}/../<stage>/SKILL.md`. In those files, `$0` stands for the ticket key and `${CLAUDE_SKILL_DIR}` for that stage's own folder, because a file read this way gets no substitution.
+Each stage is a skill of its own. Run a stage by reading its `SKILL.md` and following it with the same ticket key. They live next to this one: `${CLAUDE_SKILL_DIR}/../<stage>/SKILL.md`. In those files, `$0` stands for the normalised ticket key and `${CLAUDE_SKILL_DIR}` for that stage's own folder, because a file read this way gets no substitution.
 
 | # | Stage | Next when |
 |---|-------|-----------|

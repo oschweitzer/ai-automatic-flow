@@ -1,14 +1,14 @@
 ---
 name: mr-loop
 description: Use when a ticket-flow merge request has review findings or new comments from people or bots that need sorting, fixing or answering.
-argument-hint: "<JIRA-KEY>"
+argument-hint: "<TICKET>"
 disable-model-invocation: true
-allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/checks.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/watch-mr-comments.sh *)
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/checks.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/watch-mr-comments.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh *)
 ---
 
 # Comment loop
 
-The ticket key is the first argument: `$0`. Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. `forge.sh` below means `bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh`, and the watcher is `bash ${CLAUDE_SKILL_DIR}/../../scripts/watch-mr-comments.sh`.
+Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. The ticket key is the output of `bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh "$0"`, run before anything else. On exit 1, show its message and stop. `forge.sh` below means `bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh`, and the watcher is `bash ${CLAUDE_SKILL_DIR}/../../scripts/watch-mr-comments.sh`.
 
 Act only on the MR recorded in `mr.json`. Never reply on another MR.
 

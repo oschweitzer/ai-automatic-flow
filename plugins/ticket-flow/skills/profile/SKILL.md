@@ -17,6 +17,7 @@ Look, do not guess. When something cannot be found, write `TODO` and list it for
 | Field | Where to look |
 |-------|---------------|
 | `forge` | `git remote get-url origin`: `github` for github.com, `gitlab` otherwise |
+| `tracker` | ask the user, see below. A GitHub repository can have issues switched on and still use Jira |
 | `base_branch` | `develop` if `origin/develop` exists, else the branch `origin/HEAD` points to |
 | `branch_pattern` | recent branch names (`git branch -r`), else `{type}/{key}-{slug}` |
 | `protected_branches` | the default list below, plus long-lived branches seen on the remote |
@@ -28,13 +29,16 @@ Look, do not guess. When something cannot be found, write `TODO` and list it for
 | `risk_paths` | folders for migrations, authentication, permissions, payment |
 | module map | top-level source folders, one line each on what they hold |
 
-Ask the user, in one message, for what the repository cannot tell: `jira_project`, `test_env_url`, `client_language`, `team_language`, and `review_bot` if the team has one.
+Ask the user, in one message, for what the repository cannot tell: `tracker` (`jira`, or `github` for GitHub issues in this repository), `jira_project` (only with Jira), `test_env_url`, `client_language`, `team_language`, and `review_bot` if the team has one.
+
+With `tracker: github`, write `jira_project: ""`. `tracker: github` needs `forge: github`: on another forge, tell the user it is not supported and write `tracker: jira`.
 
 ## Write
 
 ```markdown
 ---
 forge: gitlab
+tracker: jira
 jira_project: SHOP
 base_branch: develop
 branch_pattern: "{type}/{key}-{slug}"
