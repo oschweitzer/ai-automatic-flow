@@ -14,6 +14,7 @@
 - No spend cap during the pilot. Cost is measured on every run, and the loop caps and `maxTurns` stay.
 - The pilot uses at least one ticket of each kind (see below), to validate the whole flow.
 - GitLab and GitHub are both supported, GitLab first. Every forge call goes through one script, `forge.sh`.
+- Tickets come from Jira or from GitHub issues in the same repository, chosen by `tracker` in the profile (Jira when missing). On a public repository, every post on an issue is a light version without sensitive details, approved by the developer first. See the [design](docs/superpowers/specs/2026-10-27-github-issues-tracker-design.md).
 - The MR opens as a draft right after the local checks. The forge's CI is the gate before the AI review, with a capped fix loop.
 - The flow may push to the branch of an MR it opened, and may reply to threads on that MR, without asking a human. It resolves only the threads it fixed and whose fix passed the fix checker. Every other thread stays open for a human. It never pushes to an integration branch (main, master, develop, staging, prod and the like), never force-pushes, and never merges. The `PreToolUse` git guard enforces the push and merge rules.
 - The AI review is Claude Code's bundled `/code-review`, run locally in a separate non-interactive session, so it shares nothing with the author's context. The flow posts its findings as threads itself. No personal Claude credential goes into CI. There is no second AI review before the MR.

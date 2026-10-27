@@ -4,15 +4,15 @@ Every ticket-flow skill follows these rules. `<plugin>` below is the plugin root
 
 ## Inputs
 
-- The ticket key is the skill's first argument, for example `SHOP-142`.
-- The repository profile is `.claude/ticket-flow.md` at the repository root. Read its frontmatter for commands, branches and Jira settings, and its body for the module map. If it is missing, stop and tell the user to run `/ticket-flow:profile`.
+- The repository profile is `.claude/ticket-flow.md` at the repository root. Read its frontmatter for commands, branches and tracker settings, and its body for the module map. If it is missing, stop and tell the user to run `/ticket-flow:profile`.
+- The ticket key is the output of `bash <plugin>/scripts/ticket-key.sh "<first argument>"`, run first. On exit 1, show its message and stop. A Jira key is kept as typed, for example `SHOP-142`. A GitHub issue typed `142`, `#142` or `GH-142` becomes `GH-142`. `<KEY>` everywhere below means that output. For GitHub, the issue number is `<KEY>` without `GH-`.
 - The run folder is `.ticket-flow/runs/<KEY>/`. Make sure `.ticket-flow/` is listed in `.git/info/exclude`, so the run folder never shows in `git status` and the repository's `.gitignore` is not touched.
 
 ## Run folder
 
 | File | Written by |
 |------|------------|
-| `ticket.md` | triage, a snapshot of the Jira ticket |
+| `ticket.md` | triage, a snapshot of the ticket |
 | `triage.json` | triage |
 | `plan.json` | plan |
 | `report.md` | execute |
@@ -64,12 +64,42 @@ Run bundled scripts through `bash`, never by bare path:
 
 - `bash <plugin>/scripts/forge.sh <command> ...` for every GitLab or GitHub call. Never call `glab` or `gh` directly.
 - `bash <plugin>/scripts/checks.sh` for lint, type check and tests.
+- `bash <plugin>/scripts/ticket-key.sh <ticket>` for the ticket key, see Inputs.
 
-## Jira
+## Tracker
+
+The profile's `tracker` says where tickets live: `jira` (the default when the key is missing) or `github`, for GitHub issues in the same repository. `tracker: github` needs `forge: github`.
+
+| Operation | Jira | GitHub |
+|-----------|------|--------|
+| read a ticket | Atlassian MCP | `forge.sh issue-read <n>` |
+| comment on a ticket | Atlassian MCP | `forge.sh issue-comment <n> <body-file>`, after the Public issues check |
+| create a part of a split | Atlassian MCP (sub-task, or task linked to the story) | `forge.sh issue-create-sub <parent> <title> <body-file>`, after the Public issues check |
+| link to the ticket from the MR | `Jira: <ticket URL>` line | `Issue: #<n>` line, never a closing keyword |
 
 Jira goes through the Atlassian MCP server. Tool names depend on how the server was added, so look for the operation: search with JQL, read an issue, add a comment, create an issue, link two issues.
 
-Version 1 does not change Jira statuses. It only reads tickets and posts comments. Every Jira comment starts with `[ticket-flow]`.
+`issue-read` drops comments from people without write access, except the issue author's, and counts them in `dropped_comments`.
+
+Version 1 changes no status. On Jira it only reads tickets, posts comments and creates the parts of a split. On GitHub it never touches labels, assignees, milestones, issue types, and never closes or reopens an issue. Every ticket comment starts with `[ticket-flow]`.
+
+## Public issues
+
+Before any GitHub issue comment or part creation, run `forge.sh visibility`. With `private` or `internal`, post as with Jira. With `public`, anyone can read the issue, so two rules apply.
+
+The text is a light version. It never contains file paths or code, the risks of the plan or anything that describes a weakness, test environment URLs, account names or the file that holds them, internal hostnames or IP addresses, logs or stack traces, or the names of people other than the issue's author.
+
+| Post | Light version |
+|------|---------------|
+| triage questions | the questions, without file or code references |
+| plan summary | the expected behaviour in a few sentences, and the open points the client can answer. No files, tests, configuration or risks |
+| part of a split | title and acceptance criteria, checked against the list above |
+| comment listing the parts | unchanged, issue numbers only |
+| client test steps | the steps, with "the test environment" in place of its URL and "your usual test account" in place of account details |
+
+The developer approves the exact text first. Write it to `public-<post>.md` in the run folder (`<post>` is `questions`, `plan`, `part-<n>` or `client-steps`), show it in full, and ask: post, edit or skip. On edit, take the developer's version and ask again. On skip, post nothing, add `public post skipped: <post>` to the `detail` of the stage's next log line, and go on. A skipped `questions` post still parks the run: tell the developer the client has not been asked. This approval comes on top of the plan gate. For the plan, the developer approves the plan first, then the public text.
+
+On a public repository the MR is public too. The handover comment on the MR leaves out the test environment URL and account details, and keeps its other sections.
 
 ## Forge comments
 
@@ -86,4 +116,4 @@ When a limit is reached, write the matching end state and stop. Never raise a li
 
 ## Text written for humans
 
-Plain language, short sentences, no filler. Jira comments and client steps in the profile's `client_language`, MR comments in `team_language`.
+Plain language, short sentences, no filler. Ticket comments and client steps in the profile's `client_language`, MR comments in `team_language`.
