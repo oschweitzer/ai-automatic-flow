@@ -40,7 +40,23 @@ Each skill appends one JSON line to `log.jsonl` when it starts and one when it e
 {"at":"2026-10-26T10:12:00Z","stage":"triage","event":"end","outcome":"continue"}
 ```
 
-The run ends with a line whose `event` is `end_state` and whose `outcome` is one of: `ready_for_qa`, `split`, `parked_needs_info`, `plan_rejected`, `escalated_checks`, `escalated_ci`, `escalated_comments`, `timeout`, `failed_permission`. Never write a secret, a token or a full log into `log.jsonl`.
+Lines are appended, never rewritten. `at` is UTC, RFC 3339 with `Z`. `stage` is one of `triage`, `plan`, `execute`, `open-mr`, `ci-gate`, `review`, `mr-loop`, `handover`. `event` is one of these:
+
+| `event` | Written when | Extra fields |
+|---------|--------------|--------------|
+| `start` | the stage starts | `model` on `plan` and `execute`: `haiku`, `sonnet` or `opus` |
+| `end` | the stage ends without ending the run | `outcome` |
+| `waiting` | the stage starts waiting on someone else | `on`: `developer` (plan gate), `ci` (ci-gate), `reviews` (mr-loop waiting for the review bot) |
+| `end_state` | the run ends | `outcome`, see below |
+| `published` | `handover --publish` posted the client steps | none |
+
+The next `start`, `end` or `end_state` line closes a wait.
+
+The run ends with a line whose `event` is `end_state` and whose `outcome` is one of: `ready_for_qa`, `split`, `parked_needs_info`, `plan_rejected`, `escalated_checks`, `escalated_ci`, `escalated_comments`, `timeout`, `failed_permission`.
+
+Any line may carry `detail`, a string of 200 characters at most, for counts or a URL. Never put a comment body or a CI log in it. Never write a secret, a token or a full log into `log.jsonl`.
+
+The ticket-flow dashboard reads this file. `tests/fixtures/log-contract.jsonl` is a full example run and `tests/test-log-contract.sh` checks a log against these rules. Changing the contract means changing that fixture and the dashboard together.
 
 ## Scripts
 
