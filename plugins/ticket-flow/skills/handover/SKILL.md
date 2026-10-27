@@ -39,7 +39,7 @@ Save them in `assets/` and upload each with `forge.sh upload <mr> <file>`, which
 7. Before merging: a checklist. Always CI, tests, manual test, open threads answered, client steps read. Add one line per configuration change, saying what to set, where, and on which environments (local, test environment, production). When a default exists, the line asks to confirm the default is fine. Last line: `/ticket-flow:handover <KEY> --publish` after deployment to the test environment.
 8. The client steps from section 4 below, inside `<details>`, marked as a draft.
 
-On GitHub, run `forge.sh visibility` first. When it prints `public`, the MR is public too: leave the test environment URL and account details out of `handover.md`, as the Public issues section says, and keep the other sections.
+On a GitHub forge, whatever the tracker, run `forge.sh visibility` first. When it prints `public` (or fails), the MR is public too: leave the test environment URL and account details out of `handover.md`, including the client steps draft of section 8, as the Public issues section says, and keep the other sections.
 
 Post it with `forge.sh upsert-note <mr> "ticket-flow:handover <KEY>" handover.md`, which updates the earlier comment on a rerun.
 
@@ -53,4 +53,4 @@ Run `forge.sh mark-ready <mr>`. Write the end state `ready_for_qa`. Tell the dev
 
 ## Publishing the client steps
 
-Only with `--publish`. Show `client-steps.md` and ask the developer to confirm they have read it and that the change is deployed on the test environment. On yes, post it on the ticket, starting with `[ticket-flow]`. On GitHub, follow the Public issues section first. If it mentions files, remind the developer to attach them to the ticket by hand. Append a line with `stage: "handover"` and `event: "published"`.
+Only with `--publish`. Show `client-steps.md` and ask the developer to confirm they have read it and that the change is deployed on the test environment. On yes, post it on the ticket, starting with `[ticket-flow]`. With `tracker: github`, follow the Public issues section first. If the developer skips the post, write no `published` line and tell them the steps are still unpublished. If it mentions files, remind the developer to attach them to the ticket by hand. Once posted, append a line with `stage: "handover"` and `event: "published"`.

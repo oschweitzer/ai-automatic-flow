@@ -43,4 +43,4 @@ Run the steps listed under `left_to_orchestrator` in `report.md` yourself, in th
 
 ## 5. Done
 
-Log the end with the commits and the check results. Report in three lines: commits, checks, anything not tested.
+Log the end with the number of commits and the check results in `detail`, for example `3 commits, checks passed`. Report in three lines: commits, checks, anything not tested.

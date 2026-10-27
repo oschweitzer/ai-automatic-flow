@@ -82,9 +82,9 @@ Threads left open for a human:
 - [ ] After deployment to the test environment: `/ticket-flow:handover SHOP-142 --publish`
 
 <details>
-<summary>Client test steps (draft, not on Jira yet)</summary>
+<summary>Client test steps (draft, not on the ticket yet)</summary>
 
-(the Jira comment below)
+(the ticket comment below)
 
 </details>
 ````

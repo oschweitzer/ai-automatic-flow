@@ -29,6 +29,6 @@ Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. The ticket key 
 
    Then `forge.sh open-mr <branch> <base> "<KEY>: <summary from triage.json>" <run>/mr-body.md`. It prints the number and the URL.
 4. Write `mr.json`: `{"number": 12, "url": "...", "branch": "...", "ci_rounds": 0, "comment_rounds": 0}`.
-5. On Jira, comment on the ticket: `[ticket-flow] Draft merge request: <url>`. On GitHub, skip this step: the issue's timeline already shows the MR.
+5. With `tracker: jira`, comment on the ticket: `[ticket-flow] Draft merge request: <url>`. With `tracker: github`, skip this step: the issue's timeline already shows the MR.
 
-If the push or the MR creation is refused for lack of rights, write the end state `failed_permission`. Log the end with the MR URL.
+If the push or the MR creation is refused for lack of rights, write the end state `failed_permission`. Log the end with the MR URL in `detail`.

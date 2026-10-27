@@ -31,11 +31,11 @@ Summarise `plan.json` in the session, in this order:
 - For a plan: the branch, the executor model, each file with its change, the tests, the configuration changes, the risks and what the plan does about them, the open points.
 - For a split: one line per part (title, order, dependencies) and its acceptance criteria.
 
-Post the same summary on the ticket, starting with `[ticket-flow] Proposed plan`, in the client language. On a public GitHub repository, follow the Public issues section: post the light version after the gate below has approved the plan.
+Post the same summary on the ticket, starting with `[ticket-flow] Proposed plan`, in the client language. With `tracker: github`, follow the Public issues section first. On a public repository, post the light version only after the gate below has approved the plan.
 
 ## 4. Gate
 
-Append a `waiting` line with `on: "developer"`, then ask the developer to approve, rework or stop. Wait for the answer. A rework round launches the planner again without a new start line. The next `waiting` line marks the next question. This gate is never skipped in version 1, even when the user asked to run everything.
+Append a `waiting` line with `on: "developer"`, then ask the developer to approve, rework or stop. Wait for the answer. On a rework answer, append a new `plan` start line with `model` before launching the planner again, so the log no longer says the developer is the one blocking. The next `waiting` line marks the next question. This gate is never skipped in version 1, even when the user asked to run everything.
 
 | Answer | Do |
 |--------|----|
@@ -46,9 +46,9 @@ Append a `waiting` line with `on: "developer"`, then ask the developer to approv
 
 ## Creating the parts of a split
 
-On Jira, for each part, in order: create a Jira issue in the same project, as a sub-task of the story when the project allows it, otherwise as a task linked to the story. Use the part's title, its acceptance criteria as the description, and start the description with `[ticket-flow] Part <n> of <story key>`. Then comment on the story with the list of created keys.
+With `tracker: jira`, for each part, in order: create a Jira issue in the same project, as a sub-task of the story when the project allows it, otherwise as a task linked to the story. Use the part's title, its acceptance criteria as the description, and start the description with `[ticket-flow] Part <n> of <story key>`. Then comment on the story with the list of created keys.
 
-On GitHub, for each part, in order, after the Public issues check: `forge.sh issue-create-sub <story number> "<title>" <body-file>`, with the acceptance criteria as the body, starting with `[ticket-flow] Part <n> of #<story number>`. It prints the new issue number. If it exits 1 after printing a number, the issue exists but is not linked to the story: say so in the list. Then comment on the story with the list of `#<n>`. New keys are `GH-<n>`.
+With `tracker: github`, for each part, in order, after the Public issues check: `forge.sh issue-create-sub <story number> "<title>" <body-file>`, with the acceptance criteria as the body, starting with `[ticket-flow] Part <n> of #<story number>`. It prints the new issue number. If it exits 1 after printing a number, the issue exists but is not linked to the story: say so in the list. Then comment on the story with the list of `#<n>`. New keys are `GH-<n>`.
 
 If creating an issue fails, stop, list what was created, and write the end state `failed_permission`.
 

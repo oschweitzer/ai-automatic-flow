@@ -50,11 +50,11 @@ Lines are appended, never rewritten. `at` is UTC, RFC 3339 with `Z`. `stage` is 
 | `end_state` | the run ends | `outcome`, see below |
 | `published` | `handover --publish` posted the client steps | none |
 
-The next `start`, `end` or `end_state` line closes a wait.
+The next `start`, `end` or `end_state` line closes a wait. A `start` line after an `end_state` reopens the run: a run has ended only when its last `end_state` line comes after its last `start` line.
 
 The run ends with a line whose `event` is `end_state` and whose `outcome` is one of: `ready_for_qa`, `split`, `parked_needs_info`, `plan_rejected`, `escalated_checks`, `escalated_ci`, `escalated_comments`, `timeout`, `failed_permission`.
 
-Any line may carry `detail`, a string of 200 characters at most, for counts or a URL. Never put a comment body or a CI log in it. Never write a secret, a token or a full log into `log.jsonl`.
+Any line may carry `detail`, a string of 200 characters at most, for counts or a URL, for example `3 commits, checks passed`. Never put a comment body, a check output or a CI log in it. A line carries no field beyond the ones above: when a skill says to log something with an end, it goes in `detail`. Never write a secret, a token or a full log into `log.jsonl`.
 
 The ticket-flow dashboard reads this file. `tests/fixtures/log-contract.jsonl` is a full example run and `tests/test-log-contract.sh` checks a log against these rules. Changing the contract means changing that fixture and the dashboard together.
 
@@ -81,11 +81,11 @@ Jira goes through the Atlassian MCP server. Tool names depend on how the server 
 
 `issue-read` drops comments from people without write access, except the issue author's, and counts them in `dropped_comments`.
 
-Version 1 changes no status. On Jira it only reads tickets, posts comments and creates the parts of a split. On GitHub it never touches labels, assignees, milestones, issue types, and never closes or reopens an issue. Every ticket comment starts with `[ticket-flow]`.
+Version 1 changes no status. With `tracker: jira` it only reads tickets, posts comments and creates the parts of a split. With `tracker: github` it never touches labels, assignees, milestones, issue types, and never closes or reopens an issue. Every ticket comment starts with `[ticket-flow]`.
 
 ## Public issues
 
-Before any GitHub issue comment or part creation, run `forge.sh visibility`. With `private` or `internal`, post as with Jira. With `public`, anyone can read the issue, so two rules apply.
+With `tracker: github`, before any issue comment or part creation, run `forge.sh visibility`. With `private` or `internal`, post as with Jira. With `public`, anyone can read the issue, so two rules apply. Any other output, or a failure of the command, counts as `public`.
 
 The text is a light version. It never contains file paths or code, the risks of the plan or anything that describes a weakness, test environment URLs, account names or the file that holds them, internal hostnames or IP addresses, logs or stack traces, or the names of people other than the issue's author.
 
@@ -97,9 +97,9 @@ The text is a light version. It never contains file paths or code, the risks of 
 | comment listing the parts | unchanged, issue numbers only |
 | client test steps | the steps, with "the test environment" in place of its URL and "your usual test account" in place of account details |
 
-The developer approves the exact text first. Write it to `public-<post>.md` in the run folder (`<post>` is `questions`, `plan`, `part-<n>` or `client-steps`), show it in full, and ask: post, edit or skip. On edit, take the developer's version and ask again. On skip, post nothing, add `public post skipped: <post>` to the `detail` of the stage's next log line, and go on. A skipped `questions` post still parks the run: tell the developer the client has not been asked. This approval comes on top of the plan gate. For the plan, the developer approves the plan first, then the public text.
+The developer approves the exact text first. Write it to `public-<post>.md` in the run folder (`<post>` is `questions`, `plan`, `part-<n>` or `client-steps`), show it in full, and ask: post, edit or skip. On edit, take the developer's version and ask again. On skip, post nothing, add `public post skipped: <post>` to the `detail` of the stage's next log line, and go on. A skipped `questions` post still parks the run: tell the developer the client has not been asked. A skipped `client-steps` post writes no `published` line: tell the developer the steps are still unpublished. This approval comes on top of the plan gate. For the plan, the developer approves the plan first, then the public text.
 
-On a public repository the MR is public too. The handover comment on the MR leaves out the test environment URL and account details, and keeps its other sections.
+On a public GitHub repository the MR is public too, whatever the tracker. The handover comment on the MR, including the client steps draft it embeds, leaves out the test environment URL and account details, and keeps its other sections.
 
 ## Forge comments
 

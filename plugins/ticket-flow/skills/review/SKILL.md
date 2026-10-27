@@ -56,4 +56,4 @@ For a finding without evidence, the first line ends with `remark, does not block
 
 Run `forge.sh post-thread <mr> <path> <line> <file>` and store the printed id as `thread` in `findings.json`.
 
-Log the end with the number of findings per severity. If there are none, say so: the comment loop then only waits for human or bot comments.
+Log the end with the number of findings per severity in `detail`. If there are none, say so: the comment loop then only waits for human or bot comments.
