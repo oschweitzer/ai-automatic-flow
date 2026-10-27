@@ -51,6 +51,8 @@ Local data comes from the run folders. Remote data comes from GitHub or GitLab a
 
 A project is a Jira key with one or more repositories, and can be a single repository. Repositories are found under root folders the developer points the app at. A repository counts when it holds the committed profile `.claude/ticket-flow.md`, whose frontmatter gives `forge` and `jira_project`. Repositories with the same `jira_project` form one project.
 
+A repository whose profile says `tracker: github` takes its tickets from its own GitHub issues. It is a project on its own, named `owner/name` from its `origin` remote. The sidebar shows the Jira projects and these GitHub projects in two labelled groups, "Jira" and "GitHub", and hides a group with no project. See "GitHub-tracker repositories" below.
+
 ### Screen
 
 A left sidebar lists "Tous les projets" (all projects), then the projects with their repositories and a count of tickets waiting on the developer. Settings and the sync state sit at the bottom.
@@ -157,6 +159,16 @@ Local changes show within a few seconds. Jira and the forge are polled every 2 m
 
 When Jira or the forge cannot be reached, the dashboard keeps the last data it had, marks it as stale with its age, and says which source failed. Local data keeps working.
 
+### GitHub-tracker repositories
+
+Decided on 2026-10-27, see [the GitHub issues design](2026-10-27-github-issues-tracker-design.md#dashboard). The tickets of a GitHub project are its issues, read with `gh` in the repository folder: open issues, and issues closed in the last 14 days, pull requests excluded. The run folder rules do not change. Where a Jira project uses the Jira status, a GitHub project uses the issue state:
+
+- An issue closed as completed puts the ticket in Terminé, like the Jira Done override.
+- An issue closed as not planned goes to Terminé with the label "fermée sans suite".
+- An open issue without a run goes to À faire. GitHub has no "in progress" state, so an assigned issue without a run stays in À faire.
+
+The person filter uses the issue assignees, and "me" is the `gh` login. GitHub projects hide the sprint chips. The detail panel shows the issue state and labels instead of the Jira status, links to the issue instead of the Jira ticket, and shows a "public" tag when the repository is public, because the flow asks for approval before posting there.
+
 ## Version 1 scope (my calls, to check)
 
 - Read only. Every action goes through a link: open the ticket, the MR, the pipeline, the plan file or the run folder in the system's default app. The "À toi de jouer" button opens the first waiting item.
@@ -169,7 +181,7 @@ When Jira or the forge cannot be reached, the dashboard keeps the last data it h
 - Never show or log a token. Never copy log contents beyond the fields listed above.
 - Contrast and focus rules of the design system apply: text at 4.5:1 or more, control borders and focus ring at 3:1 or more, state shown with words.
 - The fonts ship with the app (no network needed to render).
-- The app keeps working with no Jira token: it then shows local runs only and says Jira is not configured.
+- The app keeps working with no Jira token: it then shows local runs only for Jira projects and says Jira is not configured. GitHub projects need no Jira token and work fully.
 
 ## Left to the builder
 

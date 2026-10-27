@@ -10,6 +10,8 @@
 
 **Spec:** [docs/superpowers/specs/2026-10-26-ticket-flow-dashboard-design.md](../specs/2026-10-26-ticket-flow-dashboard-design.md). Product record: [dashboard/PRODUCT.md](../../../dashboard/PRODUCT.md). Design rules: [dashboard/design-system/README.md](../../../dashboard/design-system/README.md).
 
+**Amended by:** [the GitHub issues design](../specs/2026-10-27-github-issues-tracker-design.md#dashboard), which adds GitHub-tracker repositories (Tasks 3 to 8 and 10 below already include it).
+
 **Depends on:** [2026-10-26-plugin-log-contract.md](2026-10-26-plugin-log-contract.md), done first. Its fixture `plugins/ticket-flow/tests/fixtures/log-contract.jsonl` is this plan's first run fixture.
 
 ## Global Constraints
@@ -24,6 +26,7 @@
 - Polling Jira and the forge every 120 seconds while the window is visible. Local files re-read within 3 seconds of a change.
 - A run with no new log line for 30 minutes, whose last line is a `start`, is flagged stale. Waits never count as stale.
 - Jira scope per project: open and future sprints, backlog not done, and tickets done in the last 14 days.
+- GitHub issues scope per GitHub-tracker repository: open issues, and issues closed in the last 14 days, pull requests excluded. Issues are read through `gh` in the repository folder.
 - Section order: En cours, En attente, À faire, Terminé. The first two open by default.
 
 ## Review Focus
@@ -31,6 +34,7 @@
 - A log line cut in half (the plugin writing while the watcher reads): skip it, keep the rest, re-read on the next change. Pinned in Task 2.
 - A repository whose profile has no `jira_project`, or a malformed frontmatter: list the repository's local runs under a project named after the folder, never crash. Pinned in Task 4.
 - `gh` or `glab` not installed or not logged in: the forge source shows an error with the CLI name, tickets still render without MR data. Pinned in Task 5.
+- A GitHub-tracker repository whose `origin` is not on github.com, or has no `origin`: it is listed under its folder name with its local runs only, never a crash. Pinned in Task 4.
 - Jira returns 401 or the site is unreachable: keep the last snapshot, mark Jira stale with its age, keep local data live. Pinned in Task 7.
 - A ticket key present locally but unknown to Jira (deleted, other project, no token): it still shows with its run, summary taken from `ticket.md`'s first heading. Pinned in Task 7.
 
@@ -108,7 +112,7 @@ pub fn steps(run: &RunState, ci_failed: bool) -> Vec<StepInfo>;
 - Test: same file
 
 **Interfaces:**
-- Consumes: `RunState` (Task 2). `MrStatus` and `JiraTicket` are defined here as plain structs and reused by Tasks 5 and 6:
+- Consumes: `RunState` (Task 2). `MrStatus`, `JiraTicket`, `GithubIssue` and `TrackerTicket` are defined here as plain structs and reused by Tasks 5 and 6:
 
 ```rust
 pub enum MrState { Open, Merged, Closed }
@@ -119,22 +123,26 @@ pub struct Person { pub account_id: String, pub display_name: String }
 pub struct JiraTicket { pub key: String, pub summary: String, pub issue_type: String, pub status: String,
                         pub status_category: StatusCategory, pub assignee: Option<Person>,
                         pub sprint_id: Option<u64>, pub url: String }
+pub enum IssueState { Open, Completed, NotPlanned }
+pub struct GithubIssue { pub number: u64, pub title: String, pub state: IssueState, pub assignees: Vec<Person>,
+                         pub labels: Vec<String>, pub url: String }
+pub enum TrackerTicket { Jira(JiraTicket), Github(GithubIssue) }
 
 pub enum Section { InProgress, Waiting, Todo, Done }
 pub enum WaitingOn { You, Client }
 pub enum Reason { PlanToApprove, MrToMerge, ClientStepsToPublish, ParkedNeedsInfo, PlanRejected,
                   EscalatedChecks, EscalatedCi, EscalatedComments, Timeout, FailedPermission,
                   Running, WaitingCi, WaitingReviews, ReadyForQa, Split, MrClosed,
-                  JiraTodo, JiraInProgress, JiraDone }        // serde snake_case: these are i18n keys
-// serde: Section, WaitingOn, MrState, Ci, StatusCategory use rename_all = "camelCase", Reason uses "snake_case"
+                  JiraTodo, JiraInProgress, JiraDone, IssueTodo, IssueDone, IssueNotPlanned }        // serde snake_case: these are i18n keys
+// serde: Section, WaitingOn, MrState, Ci, StatusCategory, IssueState use rename_all = "camelCase", Reason uses "snake_case"
 pub struct Placement { pub section: Section, pub waiting_on: Option<WaitingOn>, pub reason: Reason, pub stale_minutes: Option<i64> }
 
-pub fn classify(run: Option<&RunState>, jira: Option<&JiraTicket>, mr: Option<&MrStatus>, now: DateTime<Utc>) -> Placement;
+pub fn classify(run: Option<&RunState>, ticket: Option<&TrackerTicket>, mr: Option<&MrStatus>, now: DateTime<Utc>) -> Placement;
 ```
 
-- [ ] **Step 1: Write one failing test per row of the spec's state table** (`docs/superpowers/specs/2026-10-26-ticket-flow-dashboard-design.md`, "How states are read") and per override: `waiting_developer_is_plan_to_approve`, `waiting_ci_is_in_progress`, `ready_for_qa_open_mr_is_mr_to_merge`, `ready_for_qa_merged_is_client_steps`, `ready_for_qa_published_is_done`, `split_is_done`, `parked_is_waiting_client`, `each_blocked_end_state_waits_on_you` (loop over the six), `running_is_in_progress`, `stale_after_30_minutes` (last `start` 45 minutes before `now` gives `stale_minutes == Some(45)`), `waits_are_never_stale`, `jira_done_overrides_run`, `closed_mr_is_mr_closed`, `no_run_follows_jira_category` (three cases). Build `RunState` values inline with a small test helper.
+- [ ] **Step 1: Write one failing test per row of the spec's state table** (`docs/superpowers/specs/2026-10-26-ticket-flow-dashboard-design.md`, "How states are read") and per override: `waiting_developer_is_plan_to_approve`, `waiting_ci_is_in_progress`, `ready_for_qa_open_mr_is_mr_to_merge`, `ready_for_qa_merged_is_client_steps`, `ready_for_qa_published_is_done`, `split_is_done`, `parked_is_waiting_client`, `each_blocked_end_state_waits_on_you` (loop over the six), `running_is_in_progress`, `stale_after_30_minutes` (last `start` 45 minutes before `now` gives `stale_minutes == Some(45)`), `waits_are_never_stale`, `jira_done_overrides_run`, `closed_mr_is_mr_closed`, `no_run_follows_jira_category` (three cases), `issue_completed_overrides_run`, `no_run_open_issue_is_todo`, `no_run_assigned_open_issue_is_still_todo`, `not_planned_is_done_with_its_reason`. Build `RunState` values inline with a small test helper.
 - [ ] **Step 2: Run** `cargo test classify::`. Expected: FAIL.
-- [ ] **Step 3: Implement** `classify`. Order: Jira Done override, then merged-and-published, then closed MR, then the run table, then the Jira category when there is no run.
+- [ ] **Step 3: Implement** `classify`. Order: Jira Done override or issue closed as completed, then merged-and-published, then closed MR, then the run table, then, when there is no run, the Jira category or the issue state (open gives `IssueTodo` in À faire, completed `IssueDone` and not planned `IssueNotPlanned`, both in Terminé).
 - [ ] **Step 4: Run** `cargo test classify::`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(dashboard): classify tickets into sections`.
 
@@ -149,16 +157,19 @@ pub fn classify(run: Option<&RunState>, jira: Option<&JiraTicket>, mr: Option<&M
 
 ```rust
 pub enum Forge { Github, Gitlab }
-pub struct Repo { pub name: String, pub path: PathBuf, pub forge: Option<Forge>, pub jira_project: Option<String> }
-pub struct ProjectDef { pub key: String, pub repos: Vec<Repo> }   // key = jira_project, else the folder name upper-cased
-pub fn read_profile(repo: &Path) -> Option<(Option<Forge>, Option<String>)>; // None when .claude/ticket-flow.md is missing
+pub enum Tracker { Jira, Github }                                 // missing or unknown in the profile gives Jira
+pub struct Repo { pub name: String, pub path: PathBuf, pub forge: Option<Forge>, pub tracker: Tracker,
+                  pub jira_project: Option<String>, pub remote: Option<String> } // remote = "owner/name" from origin, github.com only
+pub struct ProjectDef { pub key: String, pub tracker: Tracker, pub repos: Vec<Repo> } // key = jira_project, else the folder name upper-cased. GitHub tracker: remote, else the folder name
+pub fn read_profile(repo: &Path) -> Option<(Option<Forge>, Tracker, Option<String>)>; // None when .claude/ticket-flow.md is missing
+pub fn parse_remote(url: &str) -> Option<String>;                 // owner/name from an https or ssh github.com URL
 pub fn discover(roots: &[PathBuf]) -> Vec<Repo>;                  // depth 3 below each root
 pub fn group(repos: Vec<Repo>) -> Vec<ProjectDef>;                // sorted by key
 ```
 
-- [ ] **Step 1: Write the failing tests:** `reads_profile_frontmatter` (frontmatter with `forge: gitlab   # detected` and `jira_project: SHOP` gives `(Some(Gitlab), Some("SHOP"))`, using the same comment-stripping case as `plugins/ticket-flow/tests/test-checks.sh`), `profile_without_jira_project`, `malformed_frontmatter_is_not_fatal` (no closing `---`: returns `(None, None)`), `discovers_only_repos_with_profile`, `skips_heavy_folders` (a profile inside `node_modules/x/` is ignored), `groups_by_jira_project` (two repos with `SHOP` give one project with two repos).
+- [ ] **Step 1: Write the failing tests:** `reads_profile_frontmatter` (frontmatter with `forge: gitlab   # detected` and `jira_project: SHOP` gives `(Some(Gitlab), Some("SHOP"))`, using the same comment-stripping case as `plugins/ticket-flow/tests/test-checks.sh`), `profile_without_jira_project`, `malformed_frontmatter_is_not_fatal` (no closing `---`: returns `(None, None)`), `discovers_only_repos_with_profile`, `skips_heavy_folders` (a profile inside `node_modules/x/` is ignored), `groups_by_jira_project` (two repos with `SHOP` give one project with two repos), `tracker_defaults_to_jira`, `github_tracker_repo_is_its_own_project` (two GitHub-tracker repos with the same empty `jira_project` give two projects), `ssh_and_https_remotes_parse` (`git@github.com:acme/shop.git` and `https://github.com/acme/shop` give `acme/shop`, a gitlab.com URL gives `None`).
 - [ ] **Step 2: Run** `cargo test repos::`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Read only the lines between the first two `---` lines, take top-level `key: value` pairs, strip a trailing `# comment` and surrounding quotes. No YAML crate. Skip folders named `node_modules`, `target`, `dist`, `vendor`, and any starting with `.` except `.claude` when reading the profile. A folder that holds a profile is not searched further.
+- [ ] **Step 3: Implement.** Read only the lines between the first two `---` lines, take top-level `key: value` pairs, strip a trailing `# comment` and surrounding quotes. No YAML crate. Skip folders named `node_modules`, `target`, `dist`, `vendor`, and any starting with `.` except `.claude` when reading the profile. A folder that holds a profile is not searched further. `remote` comes from reading `.git/config` (or the `gitdir` a `.git` file points to), never from running git.
 - [ ] **Step 4: Run** `cargo test repos::`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(dashboard): discover repositories and group projects`.
 
@@ -166,7 +177,7 @@ pub fn group(repos: Vec<Repo>) -> Vec<ProjectDef>;                // sorted by k
 
 **Files:**
 - Create: `dashboard/app/src-tauri/src/forge.rs`
-- Create: `dashboard/app/src-tauri/tests/fixtures/forge/` (`gh-pr-view.json`, `gh-pr-checks-fail.json`, `gh-pr-list.json`, `glab-mr.json`, `glab-mr-list.json`)
+- Create: `dashboard/app/src-tauri/tests/fixtures/forge/` (`gh-pr-view.json`, `gh-pr-checks-fail.json`, `gh-pr-list.json`, `glab-mr.json`, `glab-mr-list.json`, `gh-issue-list.json`)
 - Test: same file
 
 **Interfaces:**
@@ -179,11 +190,17 @@ pub struct SystemRunner;                                      // std::process::C
 pub fn mr_status(r: &dyn Runner, repo: &Repo, mr: Option<&MrRef>, key: &str) -> Result<Option<MrStatus>, String>;
 pub fn parse_gh(view: &str, checks: &str) -> Option<MrStatus>;
 pub fn parse_glab(mr: &str) -> Option<MrStatus>;
+pub fn issues(r: &dyn Runner, repo: &Repo, now: DateTime<Utc>) -> Result<Vec<GithubIssue>, String>;
+pub fn parse_issues(list: &str) -> Vec<GithubIssue>;
+pub fn visibility(r: &dyn Runner, repo: &Repo) -> Result<String, String>;   // gh repo view --json visibility, lower case
+pub fn gh_login(r: &dyn Runner, dir: &Path) -> Result<Person, String>;     // gh api user, account_id = login
 ```
 
 Commands, run in the repository folder. GitHub: `gh pr view <n> --json number,url,state,isDraft` and `gh pr checks <n> --json bucket,link` (it exits non-zero while checks fail or run, keep its stdout), or without `MrRef`: `gh pr list --state all --search <KEY> --json number,headRefName --limit 20`, keeping the first whose `headRefName` contains the key, case-insensitive. GitLab: `glab api projects/:id/merge_requests/<n>` (`state`, `draft`, `web_url`, `head_pipeline.status`, `head_pipeline.web_url`), or without `MrRef`: `glab api --method GET projects/:id/merge_requests -f state=all -f search=<KEY> -f per_page=20`, same branch rule on `source_branch`. CI mapping: GitHub buckets with any `fail` give Red, any `pending` Running, all `pass` or `skipping` Green, none at all None. GitLab `success` Green, `failed` Red, `running`, `pending`, `created` Running, missing pipeline None, anything else Red.
 
-- [ ] **Step 1: Write the failing tests:** `parses_gh_open_red`, `parses_gh_merged_green`, `parses_glab_running_draft`, `finds_mr_by_branch` (a fake `Runner` returning the list fixture, key `shop-142` matches branch `feat/SHOP-142-tva`), `no_match_is_none`, `missing_cli_is_an_error` (fake runner returning `Err("gh: not found")` gives `Err` containing `gh`).
+`issues` runs `gh issue list --state open` and `gh issue list --state closed --search "closed:>=<date 14 days before now>"`, both with `--json number,title,state,stateReason,assignees,labels,url --limit 500`. `stateReason` `NOT_PLANNED` gives `NotPlanned`, any other closed issue `Completed`. Check that the installed `gh` accepts `stateReason`. If it does not, drop the field and treat every closed issue as `Completed`.
+
+- [ ] **Step 1: Write the failing tests:** `parses_gh_open_red`, `parses_gh_merged_green`, `parses_glab_running_draft`, `finds_mr_by_branch` (a fake `Runner` returning the list fixture, key `shop-142` matches branch `feat/SHOP-142-tva`), `no_match_is_none`, `missing_cli_is_an_error` (fake runner returning `Err("gh: not found")` gives `Err` containing `gh`), `parses_issue_list`, `not_planned_maps_to_not_planned`.
 - [ ] **Step 2: Run** `cargo test forge::`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** `cargo test forge::`. Expected: PASS.
@@ -246,26 +263,29 @@ pub struct Ticket {
     pub key: String, pub project: String, pub summary: String, pub issue_type: Option<String>,
     pub repo: Option<String>, pub sprint_id: Option<u64>, pub assignee: Option<Person>,
     pub local_run: bool, pub placement: Placement, pub track: Option<Track>, pub steps: Vec<StepInfo>,
-    pub mr: Option<MrStatus>, pub jira_url: Option<String>, pub jira_status: Option<String>,
+    pub mr: Option<MrStatus>, pub ticket_url: Option<String>, pub ticket_status: Option<String>, // Jira status, or the issue state
+    pub labels: Vec<String>,                                                                     // GitHub issues only
     pub triage: Option<TriageInfo>, pub plan: Option<PlanSummary>,
     pub run_dir: Option<String>, pub plan_path: Option<String>, pub handover_path: Option<String>,
     pub last_activity: Option<DateTime<Utc>>,
 }
-pub struct ProjectView { pub key: String, pub repos: Vec<String>, pub forge: Option<Forge>, pub sprints: Vec<Sprint>, pub has_sprints: bool }
+pub struct ProjectView { pub key: String, pub tracker: Tracker, pub repos: Vec<String>, pub forge: Option<Forge>, pub public: bool,
+                         pub sprints: Vec<Sprint>, pub has_sprints: bool } // GitHub tracker: has_sprints false
 pub struct SourceState { pub configured: bool, pub ok: bool, pub error: Option<String>, pub last_ok_at: Option<DateTime<Utc>> }
 pub struct Snapshot { pub me: Option<Person>, pub projects: Vec<ProjectView>, pub tickets: Vec<Ticket>,
                       pub people: Vec<Person>, pub jira: SourceState, pub forge: SourceState, pub synced_at: DateTime<Utc> }
 
 pub fn build(projects: &[ProjectDef], runs: &[(String, RunState)],      // (repo name, run)
-             jira: &[JiraProject], mrs: &HashMap<String, MrStatus>,     // by ticket key
+             jira: &[JiraProject], issues: &HashMap<String, Vec<GithubIssue>>, // issues by project key
+             mrs: &HashMap<String, MrStatus>,                            // by ticket key
              me: Option<&Person>, now: DateTime<Utc>) -> Vec<Ticket>;
 ```
 
 Tauri commands: `get_snapshot() -> Snapshot`, `refresh()`, `get_settings() -> SettingsView` (`Settings` plus `has_token: bool`), `save_settings(settings: Settings, token: Option<String>)`. Event `snapshot` with a `Snapshot` payload, emitted after every rebuild.
 
-`sync.rs` holds the state in a `tokio::sync::Mutex`. Local rebuilds come from a `notify` watcher on each repo's `.ticket-flow/runs/` (recursive, debounced 500 ms). Remote fetches run every 120 s, and on `refresh` and `save_settings`. Remote fetches pause while the main window is hidden or minimised. On a remote error, the previous Jira or forge data is kept and only the `SourceState` changes. Without settings or token, `jira.configured = false` and only local runs are listed.
+`sync.rs` holds the state in a `tokio::sync::Mutex`. Local rebuilds come from a `notify` watcher on each repo's `.ticket-flow/runs/` (recursive, debounced 500 ms). Remote fetches run every 120 s, and on `refresh` and `save_settings`. Remote fetches pause while the main window is hidden or minimised. On a remote error, the previous Jira or forge data is kept and only the `SourceState` changes. Without settings or token, `jira.configured = false` and only local runs are listed for Jira projects. GitHub projects fetch their issues and visibility with the forge poll whatever the Jira settings, and keep their last data on error like the rest. Their ticket keys are `GH-<number>`, matching the run folders, and "me" for them is the `gh` login.
 
-- [ ] **Step 1: Write the failing tests:** `local_run_without_jira_uses_ticket_md_summary`, `local_run_is_mine_whatever_the_assignee` (the ticket's `assignee` stays the Jira one and `local_run` is true. The front end relies on that flag), `jira_only_ticket_has_no_track`, `track_marks_failed_when_ci_red` (run at ci-gate and MR `Ci::Red` gives `track.failed`), `people_are_unique_and_sorted`, `paths_point_into_run_dir` (`plan_path` ends with `plan.json`, `handover_path` only when `handover.md` exists).
+- [ ] **Step 1: Write the failing tests:** `local_run_without_jira_uses_ticket_md_summary`, `local_run_is_mine_whatever_the_assignee` (the ticket's `assignee` stays the Jira one and `local_run` is true. The front end relies on that flag), `jira_only_ticket_has_no_track`, `track_marks_failed_when_ci_red` (run at ci-gate and MR `Ci::Red` gives `track.failed`), `people_are_unique_and_sorted`, `paths_point_into_run_dir` (`plan_path` ends with `plan.json`, `handover_path` only when `handover.md` exists), `github_project_without_jira_token` (a GitHub-tracker project lists its issues with `jira.configured = false`), `github_ticket_links_to_issue` (`ticket_url` is the issue URL, `ticket_status` is `open`, the key is `GH-142`).
 - [ ] **Step 2: Run** `cargo test snapshot::`. Expected: FAIL.
 - [ ] **Step 3: Implement** `build`, then `sync.rs` and the commands. Register `tauri_plugin_opener::init()`.
 - [ ] **Step 4: Run** `cargo test`. Expected: all Rust tests PASS.
@@ -297,7 +317,7 @@ export function useSnapshot(): { snapshot: Snapshot | null; refresh(): Promise<v
 
 Rules in `visible`: a ticket with `localRun` passes the person filter whenever `'__me__'` is selected. `'__unassigned__'` matches `assignee == null` without a local run. Sprint filter: `sprintId` in the selection, or `'backlog'` selected and `sprintId == null`. When `hasSprints` is false, the sprint filter is skipped.
 
-Copy keys: one per `Reason` (French and English, French text exactly as in the spec: "plan à valider", "MR à tester et merger", "étapes client à publier", "client · précision demandée", "attend la CI", "attend les retours", "sans nouvelle depuis {n} min", "en cours chez {initials}", "MR fermée"), the section titles, "Tous les projets", "À toi de jouer", "Synchronisé il y a {age}", "Jira non configuré", and the settings labels.
+Copy keys: one per `Reason` (French and English, French text exactly as in the spec: "plan à valider", "MR à tester et merger", "étapes client à publier", "client · précision demandée", "attend la CI", "attend les retours", "sans nouvelle depuis {n} min", "en cours chez {initials}", "MR fermée"), `issue_todo`, `issue_done`, `issue_not_planned` ("fermée sans suite" / "closed as not planned"), the group labels "Jira" and "GitHub", `public` ("public" in both languages), the section titles, "Tous les projets", "À toi de jouer", "Synchronisé il y a {age}", "Jira non configuré", and the settings labels.
 
 - [ ] **Step 1: Write the failing tests:** `default_shows_only_mine_and_local_runs`, `search_matches_key_or_summary`, `unassigned_filter`, `backlog_filter`, `kanban_project_ignores_sprints`, `sections_put_you_first`, `counts_match_overview_columns`, `prefs_default_and_round_trip`, `prefs_survive_broken_storage` (localStorage throwing gives defaults), `t_falls_back_to_key`.
 - [ ] **Step 2: Run** `pnpm test`. Expected: FAIL.
@@ -333,9 +353,9 @@ Behaviour comes from the design-system notes (`dashboard/design-system/component
 **Interfaces:**
 - Consumes: Tasks 8 and 9. Opening links uses `openUrl` for http(s) and `openPath` for `runDir`, `planPath`, `handoverPath`.
 
-The layout follows `.superpowers/brainstorm/595432-1793018224/content/theme-geist.html` (git-ignored, on the author's machine) and the "Layout" paragraph of `dashboard/design-system/README.md`: 248 px sidebar, top bar (avatars, sprint chips, search), list column, 340 px side column. The detail panel replaces the side column and Escape closes it. The side column shows the action card, then a small summary of the selected sprints (count per section). The search field in the top bar feeds `visible`'s `query`. The sync line at the bottom of the sidebar shows the age of the last sync and a refresh button calling `refresh`. A colleague's in-progress ticket shows "en cours chez <initials>" in the progress cell. A stale run shows its flag in the stage caption. `Settings` asks for root folders (text list, one per line), Jira URL, email, token (password field, never pre-filled, "enregistré" when `hasToken`), and language. The first launch with no roots opens Settings.
+The layout follows `.superpowers/brainstorm/595432-1793018224/content/theme-geist.html` (git-ignored, on the author's machine) and the "Layout" paragraph of `dashboard/design-system/README.md`: 248 px sidebar, top bar (avatars, sprint chips, search), list column, 340 px side column. The detail panel replaces the side column and Escape closes it. The side column shows the action card, then a small summary of the selected sprints (count per section). The search field in the top bar feeds `visible`'s `query`. The sync line at the bottom of the sidebar shows the age of the last sync and a refresh button calling `refresh`. A colleague's in-progress ticket shows "en cours chez <initials>" in the progress cell. A stale run shows its flag in the stage caption. `Settings` asks for root folders (text list, one per line), Jira URL, email, token (password field, never pre-filled, "enregistré" when `hasToken`), and language. The first launch with no roots opens Settings. The sidebar and the overview group projects under "Jira" and "GitHub" by `tracker`, hiding an empty group. For a GitHub project, the detail panel shows `ticketStatus` and `labels` where a Jira project shows the Jira status, its ticket link opens the issue, and a "public" tag shows when the project is `public`.
 
-- [ ] **Step 1: Write the failing tests:** `first_launch_opens_settings`, `overview_lists_projects_with_counts`, `project_default_filter_is_me`, `adding_a_person_shows_their_tickets`, `clicking_a_row_opens_panel_and_escape_closes`, `action_card_hidden_when_nothing_waits`, `jira_not_configured_banner`, `stale_source_shows_age`, `language_switch_changes_copy`.
+- [ ] **Step 1: Write the failing tests:** `first_launch_opens_settings`, `overview_lists_projects_with_counts`, `project_default_filter_is_me`, `adding_a_person_shows_their_tickets`, `clicking_a_row_opens_panel_and_escape_closes`, `action_card_hidden_when_nothing_waits`, `jira_not_configured_banner`, `stale_source_shows_age`, `language_switch_changes_copy`, `projects_grouped_by_tracker`, `github_detail_shows_issue_state_and_public_tag`.
 - [ ] **Step 2: Run** `pnpm test`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** `pnpm test`. Expected: PASS.
