@@ -15,6 +15,13 @@ profile_path() {
   echo "$(dirname "$common")/.claude/ticket-flow.md"
 }
 
+# Prints the ticket tracker of the profile at $1: jira when the key is missing.
+profile_tracker() {
+  local tracker
+  tracker="$(profile_get "$1" tracker)"
+  echo "${tracker:-jira}"
+}
+
 # Prints the value of a frontmatter key from the profile at $1. A nested key
 # is written parent.child, like commands.test. Quotes and trailing comments
 # are stripped.
