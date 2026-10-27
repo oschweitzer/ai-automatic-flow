@@ -1,6 +1,6 @@
 # ticket-flow
 
-Carries one ticket, from Jira or from the repository's GitHub issues, to a merge request that a human can test and merge. GitLab first, GitHub second. Version 0.1.0 is a first draft that has not been run on a real repository yet.
+Carries one ticket, from Jira or from the repository's GitHub issues, to a merge request that a human can test and merge. GitLab first, GitHub second. Version 0.2.0 is a draft that has not been run on a real repository yet.
 
 ## Prerequisites
 
