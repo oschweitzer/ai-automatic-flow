@@ -285,7 +285,7 @@ These levers are ordered by how much I expect them to save. The order is my esti
 6. One AI review per MR, not one per change or per task.
 7. Parse with scripts, never with a model: review findings and comment JSON with `jq`, CI status through `forge.sh`, tickets with JQL.
 8. Keep reports short, and give agents the tail of failed logs, never the whole log.
-9. Measure the cost per run from day one, then tune the routing with numbers instead of guesses. Claude Code's OpenTelemetry metrics `claude_code.cost.usage` and `claude_code.token.usage` carry the model, the agent, the skill and the plugin as attributes. Real names for agents and skills are only sent with `OTEL_LOG_TOOL_DETAILS=1`.
+9. Measure the cost per run from day one, then tune the routing with numbers instead of guesses. Claude Code's OpenTelemetry metrics `claude_code.cost.usage` and `claude_code.token.usage` carry the model, the agent, the skill and the plugin as attributes. Real names for agents and skills are only sent with `OTEL_LOG_TOOL_DETAILS=1`. Until a collector is set up, each run records its session IDs and `scripts/usage.sh` sums their tokens and estimated cost from the local session transcripts, and the handover posts both on the MR. An ended session carries Claude Code's own cost figure. A session still running is priced from a table of API rates in the script, which misses Claude Code's background calls (about 8% less on one measured session) and must be updated when prices change.
 
 ## Execution engine
 

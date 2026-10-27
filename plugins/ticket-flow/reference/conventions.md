@@ -21,6 +21,7 @@ Every ticket-flow skill follows these rules. `<plugin>` below is the plugin root
 | `comments.json` | mr-loop, one entry per comment handled |
 | `handover.md`, `client-steps.md`, `assets/` | handover |
 | `log.jsonl` | every skill |
+| `sessions` | every skill, one Claude Code session ID per line, through `usage.sh` |
 
 Agents get file paths, never pasted file content.
 
@@ -55,6 +56,8 @@ The next `start`, `end` or `end_state` line closes a wait. A `start` line after 
 The run ends with a line whose `event` is `end_state` and whose `outcome` is one of: `ready_for_qa`, `split`, `parked_needs_info`, `plan_rejected`, `escalated_checks`, `escalated_ci`, `escalated_comments`, `timeout`, `failed_permission`.
 
 Any line may carry `detail`, a string of 200 characters at most, for counts or a URL, for example `3 commits, checks passed`. Never put a comment body, a check output or a CI log in it. A line carries no field beyond the ones above: when a skill says to log something with an end, it goes in `detail`. Never write a secret, a token or a full log into `log.jsonl`.
+
+When it logs its start, a skill also records the session it runs in: `bash <plugin>/scripts/usage.sh add <run folder> <session ID>`, with the session ID its `SKILL.md` gives. `usage.sh total <run folder>` then sums the tokens and the estimated cost in USD of every recorded session, subagents included, from the session transcripts on this machine.
 
 The ticket-flow dashboard reads this file. `tests/fixtures/log-contract.jsonl` is a full example run and `tests/test-log-contract.sh` checks a log against these rules. Changing the contract means changing that fixture and the dashboard together.
 

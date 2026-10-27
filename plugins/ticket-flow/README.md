@@ -24,6 +24,6 @@ A hook denies pushes to protected branches, force pushes, merging, `reset --hard
 
 ## Tests
 
-`bash tests/test-guard.sh`, `bash tests/test-forge.sh`, `bash tests/test-checks.sh`, `bash tests/test-ticket-key.sh`, `bash tests/test-log-contract.sh`. They need `git` and `jq`, and no network.
+`bash tests/test-guard.sh`, `bash tests/test-forge.sh`, `bash tests/test-checks.sh`, `bash tests/test-ticket-key.sh`, `bash tests/test-log-contract.sh`, `bash tests/test-usage.sh`. They need `git` and `jq`, and no network.
 
 The design is documented in the repository root: `architecture.md`, `plugin-design.md`, `handover-report.md`.

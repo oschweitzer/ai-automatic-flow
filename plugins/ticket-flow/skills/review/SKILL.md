@@ -3,21 +3,21 @@ name: review
 description: Use when a ticket-flow merge request has a green pipeline and needs its independent AI review posted as threads.
 argument-hint: "<TICKET>"
 disable-model-invocation: true
-allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh *)
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh *)
 ---
 
 # AI review
 
-Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. The ticket key is the output of `bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh "$0"`, run before anything else. On exit 1, show its message and stop. The pipeline must be green, or absent (`no_ci` in the log).
+Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. The ticket key is the output of `bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh "$0"`, run before anything else. On exit 1, show its message and stop. This session's ID is `${CLAUDE_SESSION_ID}`. The pipeline must be green, or absent (`no_ci` in the log).
 
 The review runs in a separate, non-interactive Claude Code session, so it shares nothing with the session that wrote the code. It reads the repository's `CLAUDE.md`, not the plan.
 
 ## 1. Run it
 
-From the worktree, with a 15-minute timeout:
+The review session's tokens count for the run, so give it an ID first: `bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh new <run>` records one and prints it. Then, from the worktree, with a 15-minute timeout:
 
 ```bash
-cd <worktree> && command claude -p --model sonnet \
+cd <worktree> && command claude -p --model sonnet --session-id <id> \
   --allowedTools "Read,Grep,Glob,Bash(git diff *),Bash(git log *),Bash(git show *)" \
   "/code-review medium origin/<base>...HEAD" > <run>/review.txt
 ```

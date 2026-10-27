@@ -3,12 +3,12 @@ name: handover
 description: Use when a ticket-flow merge request has finished its review loop and the developer needs test steps, points of attention and a merge checklist, or when reviewed client test steps must be published on the ticket.
 argument-hint: "<TICKET> [--publish]"
 disable-model-invocation: true
-allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh *)
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh *)
 ---
 
 # Handover
 
-Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. The ticket key is the output of `bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh "$0"`, run before anything else. On exit 1, show its message and stop. With `--publish` as second argument, skip to the last section.
+Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. The ticket key is the output of `bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh "$0"`, run before anything else. On exit 1, show its message and stop. This session's ID is `${CLAUDE_SESSION_ID}`. With `--publish` as second argument, skip to the last section.
 
 The goal: a developer can test the change, explain it to a colleague or the client, and know what could go wrong, without reading the code. Follow the structure of `${CLAUDE_SKILL_DIR}/example.md`.
 
@@ -30,7 +30,7 @@ Save them in `assets/` and upload each with `forge.sh upload <mr> <file>`, which
 
 `handover.md`, in the team language, first line `<!-- ticket-flow:handover <KEY> -->`, with these sections:
 
-1. One status line: CI outcome, review findings fixed and left open, plan approval.
+1. One status line: CI outcome, review findings fixed and left open, plan approval. Then one line for what the run has used so far, from `bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh total <run folder>`: the estimated cost in USD at API rates, the normal tokens (input and output), the cached tokens apart (cache write and cache read), and the cost per model. On exit 2, say the count is partial, and why from the script's message. On exit 1, leave the line out.
 2. What this MR does: plain language, the problem before, one everyday analogy for how it works, one sentence for a client.
 3. What changed: a table by area (screen, API, database, config, tests).
 4. How to test: prerequisites with exact commands, numbered steps each with its expected result and screenshot, API requests, and how to tell it is broken.

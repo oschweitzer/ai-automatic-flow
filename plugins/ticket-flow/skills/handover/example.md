@@ -12,6 +12,8 @@ _Posted by ticket-flow from the developer's account._
 
 CI green. AI review: 3 findings fixed and resolved, 1 thread left open. Plan approved by the developer.
 
+Cost of the run: about $3.40 at API rates (Opus $2.10, Sonnet $1.25, Haiku $0.05). Normal tokens: 97k (input 2k, output 95k). Cached tokens: 4.1M (write 310k, read 3.8M).
+
 ### What this MR does
 
 Customers can now enter a discount code at checkout. A percentage code lowers the cart total, and the total can never go below zero. Before this, discount codes existed in the back office but nothing applied them.

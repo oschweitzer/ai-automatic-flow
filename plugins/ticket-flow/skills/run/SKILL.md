@@ -3,14 +3,14 @@ name: run
 description: Use when a ticket (Jira, or a GitHub issue) should go through the whole ticket-flow, from triage to a merge request ready for manual testing, or when an interrupted run must resume.
 argument-hint: "<TICKET> [--resume]"
 disable-model-invocation: true
-allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/checks.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/watch-mr-comments.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh *)
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/checks.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/watch-mr-comments.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh *)
 ---
 
 # Run the flow
 
 Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. The ticket key is the output of `bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh "$0"`, run before anything else. On exit 1, show its message and stop.
 
-Each stage is a skill of its own. Run a stage by reading its `SKILL.md` and following it with the same ticket key. They live next to this one: `${CLAUDE_SKILL_DIR}/../<stage>/SKILL.md`. In those files, `$0` stands for the normalised ticket key and `${CLAUDE_SKILL_DIR}` for that stage's own folder, because a file read this way gets no substitution.
+Each stage is a skill of its own. Run a stage by reading its `SKILL.md` and following it with the same ticket key. They live next to this one: `${CLAUDE_SKILL_DIR}/../<stage>/SKILL.md`. In those files, `$0` stands for the normalised ticket key, `${CLAUDE_SKILL_DIR}` for that stage's own folder and the session ID for this session's, `${CLAUDE_SESSION_ID}`, because a file read this way gets no substitution.
 
 | # | Stage | Next when |
 |---|-------|-----------|
@@ -32,4 +32,4 @@ Rules:
 
 ## Report
 
-When the run stops, report in five lines at most: the end state, the MR URL if any, the open threads, what the developer must do next, and the cost of the run if the session shows it.
+When the run stops, report in five lines at most: the end state, the MR URL if any, the open threads, what the developer must do next, and the estimated cost and tokens of the run, the total row of `bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh total <run folder>`.
