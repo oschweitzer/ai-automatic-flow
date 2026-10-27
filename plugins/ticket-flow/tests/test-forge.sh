@@ -62,6 +62,60 @@ check "the watcher prints new comments from others in unresolved threads" \
   "$(bash "$SCRIPTS/watch-mr-comments.sh" 12 "$WORK/run" --once)"
 check "the watcher prints nothing the second time" "" "$(bash "$SCRIPTS/watch-mr-comments.sh" 12 "$WORK/run" --once)"
 
+# ---------------------------------------------------------------- GitHub issues
+
+printf -- '---\nforge: github\ntracker: github\n---\n' >"$WORK/.claude/ticket-flow.md"
+F="$HERE/fixtures"
+cat >"$WORK/bin/gh" <<STUB
+#!/usr/bin/env bash
+echo "\$*" >>"$WORK/calls"
+case "\$*" in
+  "repo view --json nameWithOwner -q .nameWithOwner") echo acme/shop ;;
+  "repo view --json visibility -q .visibility") echo "\${VISIBILITY:-PUBLIC}" ;;
+  "api repos/acme/shop/issues/142") cat "$F/gh-issue-142.json" ;;
+  "api repos/acme/shop/issues/143") cat "$F/gh-issue-143-pr.json" ;;
+  "api repos/acme/shop/issues/150") cat "$F/gh-issue-150.json" ;;
+  "api --paginate repos/acme/shop/issues/142/comments") cat "$F/gh-issue-142-comments.json" ;;
+  "api --paginate repos/acme/shop/issues/150/comments") echo '[]' ;;
+  "api --paginate repos/acme/shop/issues/142/sub_issues") cat "$F/gh-issue-142-sub-issues.json" ;;
+  "api --paginate repos/acme/shop/issues/150/sub_issues") echo '[]' ;;
+  "api repos/acme/shop/issues/142/parent") echo '{"message": "Not Found", "status": "404"}'; echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+  "api repos/acme/shop/issues/150/parent") cat "$F/gh-issue-150-parent.json" ;;
+  "api repos/acme/shop/issues -f title=Part 1 -f body="*) echo '{"id": 987654, "number": 152}' ;;
+  "api repos/acme/shop/issues/142/sub_issues -F sub_issue_id="*)
+    [[ -z "\${ATTACH_FAIL:-}" ]] || { echo "gh: Validation Failed (HTTP 422)" >&2; exit 1; }
+    echo '{"number": 152}' ;;
+  *) echo "stub: unexpected gh \$*" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$WORK/bin/gh"
+: >"$WORK/calls"
+
+check "visibility maps public" "public" "$(forge visibility)"
+check "visibility maps private" "private" "$(VISIBILITY=PRIVATE forge visibility)"
+check "visibility maps internal" "internal" "$(VISIBILITY=INTERNAL forge visibility)"
+check "issue-read keeps the author and collaborators" \
+  "client-anna dev-bob" "$(forge issue-read 142 | jq -r '[.comments[].author] | join(" ")')"
+check "issue-read counts dropped comments" "1" "$(forge issue-read 142 | jq -r .dropped_comments)"
+check "issue-read reports type, labels and state" \
+  "Bug bug,checkout open" "$(forge issue-read 142 | jq -r '"\(.type) \(.labels | join(",")) \(.state)"')"
+check "issue-read reports the URL" \
+  "https://github.com/acme/shop/issues/142" "$(forge issue-read 142 | jq -r .url)"
+check "issue-read lists sub-issues" "150 151" "$(forge issue-read 142 | jq -r '.sub_issues | join(" ")')"
+check "an issue without parent has a null parent" "null" "$(forge issue-read 142 | jq -r .parent)"
+check "an issue with a parent" "142 null" "$(forge issue-read 150 | jq -r '"\(.parent) \(.type)"')"
+check "issue-read refuses a pull request" "forge.sh: #143 is a pull request" "$(forge issue-read 143 2>&1 >/dev/null || true)"
+
+echo "[ticket-flow] Part 1 of #142" >"$WORK/part.md"
+: >"$WORK/calls"
+check "create-sub prints the new number" "152" "$(forge issue-create-sub 142 "Part 1" "$WORK/part.md")"
+check "create-sub attaches with the database id" "yes" \
+  "$(grep -q 'sub_issue_id=987654' "$WORK/calls" && ! grep -q 'sub_issue_id=152' "$WORK/calls" && echo yes || echo no)"
+check "a failed attach still prints the number" "152" \
+  "$(ATTACH_FAIL=1 forge issue-create-sub 142 "Part 1" "$WORK/part.md" 2>/dev/null || true)"
+check "a failed attach exits non-zero" "1" \
+  "$(ATTACH_FAIL=1 forge issue-create-sub 142 "Part 1" "$WORK/part.md" >/dev/null 2>&1; echo $?)"
+
 echo
 if [[ "$FAILURES" -gt 0 ]]; then echo "$FAILURES check(s) failed" >&2; exit 1; fi
 echo "all checks passed"

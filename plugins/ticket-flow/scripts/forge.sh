@@ -27,6 +27,13 @@ Usage: forge.sh <command> [args]
   upsert-note <mr> <marker> <body-file> update the note containing marker, or post it
   upload <mr> <file>                    print a Markdown link to the uploaded file
   mark-ready <mr>                       take the MR out of draft
+
+GitHub issues (tracker: github):
+  visibility                            public, private or internal
+  issue-read <n>                        the issue as JSON, comments from outsiders dropped
+  issue-comment <n> <body-file>         comment on an issue, print its id
+  issue-create-sub <parent> <title> <body-file>
+                                        create a sub-issue, print its number
 EOF
 }
 
@@ -250,6 +257,50 @@ gh_upload() {
 }
 
 gh_mark_ready() { gh pr ready "$1" >/dev/null; }
+
+gh_visibility() { gh repo view --json visibility -q .visibility | tr '[:upper:]' '[:lower:]'; }
+
+# Comments from people without write access are dropped, except the issue
+# author's: on a public repository anyone can comment.
+gh_issue_read() {
+  local n="$1" repo issue comments subs parent
+  repo="$(gh_repo)"
+  issue="$(gh api "repos/$repo/issues/$n")"
+  if jq -e 'has("pull_request")' <<<"$issue" >/dev/null; then
+    echo "forge.sh: #$n is a pull request" >&2
+    return 1
+  fi
+  comments="$(gh api --paginate "repos/$repo/issues/$n/comments" | jq -s 'add // []')"
+  subs="$(gh api --paginate "repos/$repo/issues/$n/sub_issues" | jq -s 'add // [] | [.[].number]')"
+  # GitHub answers 404 when the issue has no parent.
+  parent="$(gh api "repos/$repo/issues/$n/parent" 2>/dev/null | jq '.number // null')" || parent=null
+  jq -n --argjson i "$issue" --argjson c "$comments" --argjson s "$subs" --argjson p "$parent" '
+    ($c | map(select(.author_association == "OWNER" or .author_association == "MEMBER"
+      or .author_association == "COLLABORATOR" or .user.login == $i.user.login))) as $kept
+    | { number: $i.number, url: $i.html_url, title: $i.title, body: ($i.body // ""),
+        author: $i.user.login, labels: [$i.labels[].name], type: ($i.type.name // null),
+        state: $i.state, parent: $p, sub_issues: $s,
+        comments: [$kept[] | {author: .user.login, body, at: .created_at}],
+        dropped_comments: (($c | length) - ($kept | length)) }'
+}
+
+gh_issue_comment() {
+  gh api "repos/$(gh_repo)/issues/$1/comments" -f body="$(cat "$2")" -q .id
+}
+
+# The sub-issues endpoint takes the issue's database id, not its number.
+gh_issue_create_sub() {
+  local parent="$1" title="$2" body="$3" repo created number
+  repo="$(gh_repo)"
+  created="$(gh api "repos/$repo/issues" -f title="$title" -f body="$(cat "$body")")"
+  number="$(jq -r .number <<<"$created")"
+  if ! gh api "repos/$repo/issues/$parent/sub_issues" -F sub_issue_id="$(jq -r .id <<<"$created")" >/dev/null; then
+    echo "$number"
+    echo "forge.sh: created #$number but could not attach it to #$parent" >&2
+    return 1
+  fi
+  echo "$number"
+}
 
 # ---------------------------------------------------------------- dispatch
 

@@ -1,0 +1,4 @@
+{"id": 3001, "number": 142, "html_url": "https://github.com/acme/shop/issues/142", "title": "Discount code is applied twice",
+ "body": "When I enter SPRING10 twice the total drops by 20%.\n\n![screenshot](https://github.com/user-attachments/assets/abc)",
+ "user": {"login": "client-anna"}, "labels": [{"name": "bug"}, {"name": "checkout"}], "type": {"name": "Bug"},
+ "state": "open", "author_association": "NONE"}
