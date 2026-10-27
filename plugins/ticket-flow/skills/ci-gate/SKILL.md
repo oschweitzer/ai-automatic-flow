@@ -12,6 +12,8 @@ The ticket key is the first argument: `$0`. Read `${CLAUDE_SKILL_DIR}/../../refe
 
 ## Wait
 
+Append a `waiting` line with `on: "ci"`. After a fix is pushed and the skill waits again, append another.
+
 Wait for the pipeline with the Monitor tool, which costs nothing while CI runs. Poll every 60 seconds until the status is not `running`, with a 30-minute deadline:
 
 ```bash

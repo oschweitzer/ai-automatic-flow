@@ -47,6 +47,6 @@ Launch `ticket-flow:fix-checker` with the worktree, the commit range of this rou
 
 Add one to `comment_rounds` in `mr.json` after each round. Two rounds at most: when a third would start with comments still to handle, write the end state `escalated_comments`.
 
-After the first round, if the profile names a `review_bot`, wait for it with the Monitor tool: run the watcher without `--once`, with a 20-minute deadline, and start the next round on its first `BATCH_END`. Without a review bot, do not wait for people: the handover lists the open threads, and the developer can run `/ticket-flow:mr-loop <KEY>` again later.
+After the first round, if the profile names a `review_bot`, append a `waiting` line with `on: "reviews"`, then wait for it with the Monitor tool: run the watcher without `--once`, with a 20-minute deadline, and start the next round on its first `BATCH_END`. Without a review bot, do not wait for people and write no `waiting` line: the handover lists the open threads, and the developer can run `/ticket-flow:mr-loop <KEY>` again later.
 
-Log the end with the counts per category and the number of threads resolved.
+Log the end with the counts per category and the number of threads resolved in `detail`, for example `actionable 2, question 1, resolved 2`.

@@ -51,4 +51,4 @@ Run `forge.sh mark-ready <mr>`. Write the end state `ready_for_qa`. Tell the dev
 
 ## Publishing the client steps
 
-Only with `--publish`. Show `client-steps.md` and ask the developer to confirm they have read it and that the change is deployed on the test environment. On yes, post it on the Jira ticket, starting with `[ticket-flow]`. If it mentions files, remind the developer to attach them to the ticket by hand. Log the event.
+Only with `--publish`. Show `client-steps.md` and ask the developer to confirm they have read it and that the change is deployed on the test environment. On yes, post it on the Jira ticket, starting with `[ticket-flow]`. If it mentions files, remind the developer to attach them to the ticket by hand. Append a line with `stage: "handover"` and `event: "published"`.

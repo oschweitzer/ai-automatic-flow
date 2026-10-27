@@ -17,7 +17,7 @@ The ticket key is the first argument: `$0`. Read `${CLAUDE_SKILL_DIR}/../../refe
 | `size` is `small`, `risk` is empty, `ambiguities` is empty | `sonnet` |
 | anything else | `opus` |
 
-This rule is a first guess. Record the choice in the log so the pilot can check it.
+This rule is a first guess. Write the `plan` start line with `model` set to the chosen model, so the pilot can check it.
 
 ## 2. Write the plan
 
@@ -34,7 +34,7 @@ Post the same summary on the Jira ticket, starting with `[ticket-flow] Proposed 
 
 ## 4. Gate
 
-Ask the developer to approve, rework or stop. Wait for the answer. This gate is never skipped in version 1, even when the user asked to run everything.
+Append a `waiting` line with `on: "developer"`, then ask the developer to approve, rework or stop. Wait for the answer. A rework round launches the planner again without a new start line. The next `waiting` line marks the next question. This gate is never skipped in version 1, even when the user asked to run everything.
 
 | Answer | Do |
 |--------|----|

@@ -14,7 +14,8 @@ The ticket key is the first argument: `$0`. Read `${CLAUDE_SKILL_DIR}/../../refe
 
 These checks cost nothing. Run them before reading the ticket.
 
-- The run folder `.ticket-flow/runs/<KEY>/` exists: read the last lines of its `log.jsonl` and tell the user where the run stopped. Offer to resume from that stage with `/ticket-flow:run <KEY> --resume`. Stop.
+- The run folder `.ticket-flow/runs/<KEY>/` exists and the last `end_state` in its `log.jsonl` is `parked_needs_info`: the client may have answered. Tell the user the run restarts from triage, then continue with step 2, which overwrites `ticket.md` with a fresh snapshot. Append to the same log, never delete the folder.
+- The run folder exists in any other state: read the last lines of its `log.jsonl` and tell the user where the run stopped. Offer to resume from that stage with `/ticket-flow:run <KEY> --resume`. Stop.
 - A remote branch carries the key (`git ls-remote --heads origin | grep -i "/<KEY>-"`): run `forge.sh find-mr <branch>`. If an MR is open, tell the user and stop, since the flow keeps one MR per ticket.
 
 ## 2. Snapshot the ticket

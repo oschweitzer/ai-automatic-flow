@@ -10,6 +10,8 @@ allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/checks.sh *)
 
 The ticket key is the first argument: `$0`. Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. `plan.json` must exist and be approved.
 
+The stage's start line carries `model` set to `plan.json`'s `executor`.
+
 ## 1. Worktree
 
 Create the worktree at the path the conventions give, on a new branch cut from the base branch. A worktree does not start on the current HEAD, so name the start point:

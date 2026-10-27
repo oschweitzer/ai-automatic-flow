@@ -27,7 +27,7 @@ Rules:
 
 - Stop as soon as a stage writes an end state, and report it.
 - The plan gate in stage 2 always waits for the developer, even if they asked to run everything.
-- With `--resume`, read `log.jsonl`, find the last stage that ended without an end state, and continue from the stage after it. A run that already has an end state does not resume: tell the user, who can run a single stage by hand.
+- With `--resume`, read `log.jsonl`, find the last stage that ended without an end state, and continue from the stage after it. A run that already has an end state does not resume: tell the user, who can run a single stage by hand. A run parked with `parked_needs_info` restarts through triage instead: run `/ticket-flow:run <KEY>` without `--resume` once the client has answered.
 - Keep the session's context small: read the run files a stage needs, not the agents' full output.
 
 ## Report
