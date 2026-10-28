@@ -1,7 +1,7 @@
 ---
 name: run
 description: Use when a ticket (Jira, or a GitHub issue) should go through the whole ticket-flow, from triage to a merge request ready for manual testing, or when an interrupted run must resume.
-argument-hint: "<TICKET> [--resume]"
+argument-hint: "<TICKET> [--resume] [--auto-approve]"
 disable-model-invocation: true
 allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/checks.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/watch-mr-comments.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh *)
 ---
@@ -26,7 +26,7 @@ Each stage is a skill of its own. Run a stage by reading its `SKILL.md` and foll
 Rules:
 
 - Stop as soon as a stage writes an end state, and report it.
-- The plan gate in stage 2 always waits for the developer, even if they asked to run everything.
+- The plan gate in stage 2 waits for the developer, even if they asked to run everything. Only `--auto-approve` lets it pass on its own: run the plan stage as if it had been given that flag.
 - With `--resume`, read `log.jsonl`, find the last stage that ended without an end state, and continue from the stage after it. A run that has ended (its last `end_state` comes after its last `start`, see the conventions) does not resume: tell the user, who can run a single stage by hand. A run parked with `parked_needs_info` restarts through triage instead: run `/ticket-flow:run <KEY>` without `--resume` once the client has answered. A parked run that restarted and then stopped again resumes normally.
 - Keep the session's context small: read the run files a stage needs, not the agents' full output.
 

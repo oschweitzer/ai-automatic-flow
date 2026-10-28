@@ -118,7 +118,7 @@ For a story, the planner proposes sub-tickets instead: each with a title, its ow
 
 ### 3. Plan gate
 
-The plan or the split is posted as a Jira comment and summarised in the session, and the ticket moves to Plan review. The developer approves it or writes rework notes. In version 1 the gate is always on.
+The plan or the split is posted as a Jira comment and summarised in the session, and the ticket moves to Plan review. The developer approves it or writes rework notes. The gate is on by default. With `--auto-approve`, a plan whose open points are empty passes without asking, and the log says `auto-approved`. A split always waits.
 
 An approved split ends the run in the `split` state. The flow creates the sub-tickets on Jira in Ready for AI, links them to the story, and leaves the story itself to the team. Each sub-ticket then goes through the flow on its own branch.
 

@@ -48,7 +48,7 @@ At least one of each, on the test repository:
 - Run state goes in `.ticket-flow/runs/<KEY>/`, git-ignored, in the target repository.
 - Per-repository settings live in a committed `.claude/ticket-flow.md`, not in plugin `userConfig`, because `userConfig` values are saved in the user's own settings.
 - The Atlassian MCP server is a prerequisite, not bundled in the plugin.
-- The plan gate stays on for every ticket in version 1.
+- The plan gate stays on by default. `--auto-approve` skips it for a plan with no open points, never for a split.
 - Planner routing: Sonnet for small, low-risk tickets without ambiguity, Opus for the rest and for every split. A guess to check on the pilot.
 - Caps: two attempts per failing local check, two CI fix rounds, one fix attempt per comment, two comment rounds.
 - A split creates Jira sub-tasks under the story, in Ready for AI, and leaves the story's own status to the team.

@@ -30,7 +30,7 @@ Save them in `assets/` and upload each with `forge.sh upload <mr> <file>`, which
 
 `handover.md`, in the team language, first line `<!-- ticket-flow:handover <KEY> -->`, with these sections:
 
-1. One status line: CI outcome, review findings fixed and left open, plan approval. Then one line for what the run has used so far, from `bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh total <run folder>`: the estimated cost in USD at API rates, the normal tokens (input and output), the cached tokens apart (cache write and cache read), and the cost per model. On exit 2, say the count is partial, and why from the script's message. On exit 1, leave the line out.
+1. One status line: CI outcome, review findings fixed and left open, plan approval (say auto-approved when the plan's end line has that `detail`). Then one line for what the run has used so far, from `bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh total <run folder>`: the estimated cost in USD at API rates, the normal tokens (input and output), the cached tokens apart (cache write and cache read), and the cost per model. On exit 2, say the count is partial, and why from the script's message. On exit 1, leave the line out.
 2. What this MR does: plain language, the problem before, one everyday analogy for how it works, one sentence for a client.
 3. What changed: a table by area (screen, API, database, config, tests).
 4. How to test: prerequisites with exact commands, numbered steps each with its expected result and screenshot, API requests, and how to tell it is broken.

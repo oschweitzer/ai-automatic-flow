@@ -1,7 +1,7 @@
 ---
 name: plan
 description: Use when a triaged ticket-flow ticket needs its plan or its split proposal written and approved by the developer before any code is written.
-argument-hint: "<TICKET>"
+argument-hint: "<TICKET> [--auto-approve]"
 disable-model-invocation: true
 allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/ticket-key.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/forge.sh *) Bash(bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh *)
 ---
@@ -35,7 +35,9 @@ Post the same summary on the ticket, starting with `[ticket-flow] Proposed plan`
 
 ## 4. Gate
 
-Append a `waiting` line with `on: "developer"`, then ask the developer to approve, rework or stop. Wait for the answer. On a rework answer, append a new `plan` start line with `model` before launching the planner again, so the log no longer says the developer is the one blocking. The next `waiting` line marks the next question. This gate is never skipped in version 1, even when the user asked to run everything.
+With `--auto-approve`, approve the plan without asking when it is a plan, not a split, and its `open_points` is empty: write no `waiting` line, log the end with outcome `approved` and `detail` `auto-approved`, and tell the developer in one line. Otherwise, or without the flag, ask as below. A split always waits, because approving it creates tickets. The public post approval of the Public issues section still applies.
+
+Append a `waiting` line with `on: "developer"`, then ask the developer to approve, rework or stop. Wait for the answer. On a rework answer, append a new `plan` start line with `model` before launching the planner again, so the log no longer says the developer is the one blocking. The next `waiting` line marks the next question.
 
 | Answer | Do |
 |--------|----|

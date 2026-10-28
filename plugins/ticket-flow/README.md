@@ -11,7 +11,7 @@ Carries one ticket, from Jira or from the repository's GitHub issues, to a merge
 ## Use
 
 1. `/ticket-flow:profile` once per repository. Review `.claude/ticket-flow.md` and commit it.
-2. `/ticket-flow:run SHOP-142`. The flow stops once for you to approve the plan, then runs to a draft MR, waits for CI, runs `/code-review`, handles the comments and posts a handover comment.
+2. `/ticket-flow:run SHOP-142`. The flow stops once for you to approve the plan, then runs to a draft MR, waits for CI, runs `/code-review`, handles the comments and posts a handover comment. With `--auto-approve`, a plan with no open points is approved without stopping. A split proposal still waits for you.
 3. Test, merge, deploy, then `/ticket-flow:handover SHOP-142 --publish` to post the client test steps on the ticket.
 
 With GitHub issues, give the issue number as `142`, `#142` or `GH-142`. The flow calls it `GH-142` in branch names and run folders. On a public repository, the flow shows you a light version of every post on the issue, without anything sensitive, and posts it only once you approve it.
