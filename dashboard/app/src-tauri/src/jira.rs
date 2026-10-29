@@ -67,6 +67,7 @@ pub struct Page {
     pub next_token: Option<String>, // /search/jql paging
     pub raw_count: usize,           // agile paging (startAt)
     pub total: Option<u64>,
+    pub is_last: bool,
 }
 
 pub fn parse_page(v: &Value, base_url: &str, sprint_id: Option<u64>) -> Page {
@@ -76,6 +77,7 @@ pub fn parse_page(v: &Value, base_url: &str, sprint_id: Option<u64>) -> Page {
         next_token: v["nextPageToken"].as_str().map(String::from),
         raw_count: issues.len(),
         total: v["total"].as_u64(),
+        is_last: v["isLast"].as_bool().unwrap_or(false),
     }
 }
 
@@ -96,6 +98,46 @@ pub fn parse_sprints(v: &Value) -> Vec<Sprint> {
         .unwrap_or_default()
 }
 
+// Basic auth sends the token, so plain http is refused.
+pub fn check_url(url: &str) -> Result<String, String> {
+    let u = url.trim().trim_end_matches('/');
+    if u.is_empty() {
+        Err("jira: not configured".into())
+    } else if !u.starts_with("https://") {
+        Err("jira: https required".into())
+    } else {
+        Ok(u.to_string())
+    }
+}
+
+// A site without Jira Software answers 404 on the agile API: treat it as "no board".
+pub fn boards_or_none(r: Result<Value, String>) -> Result<Vec<u64>, String> {
+    match r {
+        Ok(v) => Ok(parse_board_ids(&v)),
+        Err(e) if e == "jira: 404" => Ok(vec![]),
+        Err(e) => Err(e),
+    }
+}
+
+// Stop on an empty page, the last page, or a token already seen.
+pub fn next_token_to_follow(p: &Page, seen: &[String]) -> Option<String> {
+    let t = p.next_token.as_ref()?;
+    (p.raw_count > 0 && !p.is_last && !seen.contains(t)).then(|| t.clone())
+}
+
+fn project_jql(key: &str) -> String {
+    format!("project = \"{}\"", key.replace('"', ""))
+}
+
+pub fn search_jql(key: &str, has_sprints: bool) -> String {
+    let p = project_jql(key);
+    if has_sprints {
+        format!("{p} AND statusCategory = Done AND statusCategoryChangedDate >= -14d")
+    } else {
+        format!("{p} AND (statusCategory != Done OR statusCategoryChangedDate >= -14d)")
+    }
+}
+
 fn enc(s: &str) -> String {
     urlencoding::encode(s).into_owned()
 }
@@ -109,8 +151,13 @@ fn search_url(base: &str, jql: &str, token: Option<&str>) -> String {
 }
 
 impl JiraClient {
-    pub fn new(url: &str, email: &str, token: &str) -> Self {
-        JiraClient { base: url.trim_end_matches('/').to_string(), email: email.into(), token: token.into(), http: reqwest::Client::new() }
+    pub fn new(url: &str, email: &str, token: &str) -> Result<Self, String> {
+        let base = check_url(url)?;
+        let http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+            .map_err(|_| "jira: client setup failed".to_string())?;
+        Ok(JiraClient { base, email: email.into(), token: token.into(), http })
     }
 
     async fn get(&self, url: &str) -> Result<Value, String> {
@@ -152,41 +199,45 @@ impl JiraClient {
     }
 
     async fn search(&self, jql: &str) -> Result<Vec<JiraTicket>, String> {
-        let (mut out, mut token) = (vec![], None::<String>);
+        let (mut out, mut token, mut seen) = (vec![], None::<String>, Vec::<String>::new());
         loop {
             let p = parse_page(&self.get(&search_url(&self.base, jql, token.as_deref())).await?, &self.base, None);
+            let next = next_token_to_follow(&p, &seen);
             out.extend(p.tickets);
-            match p.next_token {
-                Some(t) => token = Some(t),
+            match next {
+                Some(t) => {
+                    seen.push(t.clone());
+                    token = Some(t);
+                }
                 None => return Ok(out),
             }
         }
     }
 
     pub async fn project(&self, key: &str) -> Result<JiraProject, String> {
-        let boards = parse_board_ids(
-            &self.get(&format!("{}/rest/agile/1.0/board?projectKeyOrId={}&type=scrum", self.base, enc(key))).await?,
-        );
+        // shortcut: first page only (50), enough for one project's boards and open sprints, page with startAt if a project ever has more
+        let boards = boards_or_none(
+            self.get(&format!("{}/rest/agile/1.0/board?projectKeyOrId={}&type=scrum", self.base, enc(key))).await,
+        )?;
+        let scope = project_jql(key);
         let (mut sprints, mut tickets) = (vec![], vec![]);
         for b in &boards {
+            // shortcut: first page only (50), enough for one project's boards and open sprints, page with startAt if a project ever has more
             for s in parse_sprints(&self.get(&format!("{}/rest/agile/1.0/board/{b}/sprint?state=active,future", self.base)).await?) {
-                tickets.extend(self.agile_issues(&format!("/rest/agile/1.0/board/{b}/sprint/{}/issue", s.id), "", Some(s.id)).await?);
+                let extra = format!("jql={}&", enc(&scope));
+                tickets.extend(self.agile_issues(&format!("/rest/agile/1.0/board/{b}/sprint/{}/issue", s.id), &extra, Some(s.id)).await?);
                 if !sprints.iter().any(|x: &Sprint| x.id == s.id) {
                     sprints.push(s);
                 }
             }
-            let extra = format!("jql={}&", enc("statusCategory != Done"));
+            let extra = format!("jql={}&", enc(&format!("{scope} AND statusCategory != Done")));
             tickets.extend(self.agile_issues(&format!("/rest/agile/1.0/board/{b}/backlog"), &extra, None).await?);
         }
-        let jql = if boards.is_empty() {
-            format!("project = {key} AND (statusCategory != Done OR statusCategoryChangedDate >= -14d)")
-        } else {
-            format!("project = {key} AND statusCategory = Done AND statusCategoryChangedDate >= -14d")
-        };
-        tickets.extend(self.search(&jql).await?);
+        let has_sprints = !sprints.is_empty();
+        tickets.extend(self.search(&search_jql(key, has_sprints)).await?);
         let mut seen = std::collections::HashSet::new();
         tickets.retain(|t| seen.insert(t.key.clone()));
-        Ok(JiraProject { key: key.to_string(), sprints, has_sprints: !boards.is_empty(), tickets })
+        Ok(JiraProject { key: key.to_string(), sprints, has_sprints, tickets })
     }
 }
 
@@ -252,7 +303,39 @@ mod tests {
 
     #[test]
     fn debug_hides_token() {
-        let c = JiraClient::new("https://x", "a@b.c", "SECRET");
+        let c = JiraClient::new("https://x", "a@b.c", "SECRET").unwrap();
         assert!(!format!("{c:?}").contains("SECRET"));
+    }
+
+    #[test]
+    fn refuses_non_https_and_empty_url() {
+        assert_eq!(check_url("http://x.atlassian.net").unwrap_err(), "jira: https required");
+        assert_eq!(check_url("  ").unwrap_err(), "jira: not configured");
+        assert_eq!(check_url(" https://x.atlassian.net/ ").unwrap(), "https://x.atlassian.net");
+        assert!(JiraClient::new("http://x", "a", "t").is_err());
+    }
+
+    #[test]
+    fn search_jql_quotes_key_and_follows_sprints() {
+        assert_eq!(search_jql("DEMO", true), "project = \"DEMO\" AND statusCategory = Done AND statusCategoryChangedDate >= -14d");
+        assert!(search_jql("DEMO", false).contains("(statusCategory != Done OR"));
+    }
+
+    #[test]
+    fn board_404_means_no_board_other_errors_fail() {
+        assert!(boards_or_none(Err("jira: 404".into())).unwrap().is_empty());
+        assert_eq!(boards_or_none(Err("jira: 401".into())).unwrap_err(), "jira: 401");
+        assert_eq!(boards_or_none(Ok(fixture("boards.json"))).unwrap(), vec![42]);
+    }
+
+    #[test]
+    fn page_loop_stops_on_repeat_empty_or_last() {
+        let page = |v: Value| parse_page(&v, "https://x", None);
+        let issue = serde_json::json!({"key":"A-1","fields":{}});
+        let more = page(serde_json::json!({"nextPageToken":"t","issues":[issue.clone()]}));
+        assert_eq!(next_token_to_follow(&more, &[]).as_deref(), Some("t"));
+        assert!(next_token_to_follow(&more, &["t".to_string()]).is_none());
+        assert!(next_token_to_follow(&page(serde_json::json!({"nextPageToken":"t","issues":[]})), &[]).is_none());
+        assert!(next_token_to_follow(&page(serde_json::json!({"nextPageToken":"t","isLast":true,"issues":[issue]})), &[]).is_none());
     }
 }

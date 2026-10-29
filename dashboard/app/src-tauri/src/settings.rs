@@ -64,4 +64,12 @@ mod tests {
         std::fs::write(cfg.join("settings.json"), "{ not json").unwrap();
         assert_eq!(load(&cfg), Settings::default());
     }
+
+    #[test]
+    fn partial_settings_keep_fields_and_default_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("settings.json"), r#"{"jiraUrl":"https://x","roots":["/a"]}"#).unwrap();
+        let s = load(dir.path());
+        assert_eq!((s.jira_url.as_str(), s.roots.len(), s.language.as_str()), ("https://x", 1, "fr"));
+    }
 }
