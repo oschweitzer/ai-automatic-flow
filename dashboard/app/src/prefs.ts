@@ -27,7 +27,8 @@ export function loadPrefs(project: string, p: ProjectView): ProjectPrefs {
   if (saved) {
     const live = saved.filter((s) => s === 'backlog' || p.sprints.some((x) => x.id === s));
     const ids = live.filter((s) => s !== 'backlog');
-    sprints = ids.length || !p.hasSprints ? live : [...d.sprints, ...live];
+    const staleOnly = ids.length === 0 && saved.some((s) => s !== 'backlog');
+    sprints = staleOnly && p.hasSprints ? [...d.sprints, ...live] : live;
   }
   return {
     people: list(raw.people, (x): x is string => typeof x === 'string', d.people),
