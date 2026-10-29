@@ -52,28 +52,36 @@ pub fn mr_status(r: &dyn Runner, repo: &Repo, mr: Option<&MrRef>, key: &str) -> 
                     let list = r.run(dir, "gh", &["pr", "list", "--state", "all", "--search", key,
                         "--json", "number,headRefName", "--limit", "20"])?;
                     match find_by_branch(&list, "headRefName", key) {
-                        Some(e) => e["number"].as_u64().unwrap_or(0).to_string(),
+                        Some(e) => match e["number"].as_u64() {
+                            Some(n) => n.to_string(),
+                            None => return Ok(None),
+                        },
                         None => return Ok(None),
                     }
                 }
             };
             let view = r.run(dir, "gh", &["pr", "view", &number, "--json", "number,url,state,isDraft"])?;
-            let checks = r.run(dir, "gh", &["pr", "checks", &number, "--json", "bucket,link"])?;
+            // Best effort: a PR with no checks exits non-zero with empty stdout. A missing gh already failed at pr view.
+            let checks = r.run(dir, "gh", &["pr", "checks", &number, "--json", "bucket,link"]).unwrap_or_default();
             Ok(parse_gh(&view, &checks))
         }
         Some(Forge::Gitlab) => {
-            let body = match mr {
-                Some(m) => r.run(dir, "glab", &["api", &format!("projects/:id/merge_requests/{}", m.number)])?,
+            let iid = match mr {
+                Some(m) => m.number,
                 None => {
                     let list = r.run(dir, "glab", &["api", "--method", "GET", "projects/:id/merge_requests",
                         "-f", "state=all", "-f", &format!("search={key}"), "-f", "per_page=20"])?;
                     match find_by_branch(&list, "source_branch", key) {
-                        Some(e) => e.to_string(),
+                        // The list endpoint has no head_pipeline, so fetch the single MR.
+                        Some(e) => match e["iid"].as_u64() {
+                            Some(n) => n,
+                            None => return Ok(None),
+                        },
                         None => return Ok(None),
                     }
                 }
             };
-            Ok(parse_glab(&body))
+            Ok(parse_glab(&r.run(dir, "glab", &["api", &format!("projects/:id/merge_requests/{iid}")])?))
         }
     }
 }
@@ -85,14 +93,14 @@ pub fn parse_gh(view: &str, checks: &str) -> Option<MrStatus> {
         "MERGED" => MrState::Merged,
         _ => MrState::Closed,
     };
-    let buckets: Vec<String> = json(checks).and_then(|c| c.as_array().cloned()).unwrap_or_default()
-        .iter().map(|c| text(c, "bucket")).collect();
+    let checks = json(checks).and_then(|c| c.as_array().cloned()).unwrap_or_default();
+    let buckets: Vec<String> = checks.iter().map(|c| text(c, "bucket")).collect();
     let ci = if buckets.is_empty() { Ci::None }
         else if buckets.iter().any(|b| b == "fail") { Ci::Red }
         else if buckets.iter().any(|b| b == "pending") { Ci::Running }
         else if buckets.iter().all(|b| b == "pass" || b == "skipping") { Ci::Green }
         else { Ci::Red };
-    let pipeline_url = json(checks).and_then(|c| c.as_array().cloned()).unwrap_or_default().iter()
+    let pipeline_url = checks.iter()
         .find(|c| c["bucket"] == "fail").map(|c| text(c, "link")).filter(|l| !l.is_empty());
     Some(MrStatus { number: v["number"].as_u64()?, url: text(&v, "url"), state, draft: v["isDraft"].as_bool().unwrap_or(false), ci, pipeline_url })
 }
@@ -176,9 +184,17 @@ mod tests {
         std::fs::read_to_string(format!("{}/tests/fixtures/forge/{n}", env!("CARGO_MANIFEST_DIR"))).unwrap()
     }
 
-    struct Fake(Box<dyn Fn(&str, &[&str]) -> Result<String, String> + Send + Sync>);
+    type Calls = std::sync::Mutex<Vec<String>>;
+    struct Fake(Box<dyn Fn(&str, &[&str]) -> Result<String, String> + Send + Sync>, Calls);
+    impl Fake {
+        fn new(f: impl Fn(&str, &[&str]) -> Result<String, String> + Send + Sync + 'static) -> Self { Fake(Box::new(f), Calls::default()) }
+        fn calls(&self) -> Vec<String> { self.1.lock().unwrap().clone() }
+    }
     impl Runner for Fake {
-        fn run(&self, _: &Path, p: &str, a: &[&str]) -> Result<String, String> { (self.0)(p, a) }
+        fn run(&self, _: &Path, p: &str, a: &[&str]) -> Result<String, String> {
+            self.1.lock().unwrap().push(format!("{p} {}", a.join(" ")));
+            (self.0)(p, a)
+        }
     }
 
     fn repo(forge: Option<Forge>) -> Repo {
@@ -208,28 +224,57 @@ mod tests {
 
     #[test]
     fn finds_mr_by_branch() {
-        let gh = Fake(Box::new(|_, a| Ok(match (a[0], a[1]) {
+        let gh = Fake::new(|_, a| Ok(match (a[0], a[1]) {
             ("pr", "list") => fx("gh-pr-list.json"),
-            ("pr", "view") => { assert_eq!(a[2], "143"); fx("gh-pr-view.json") }
+            ("pr", "view") => fx("gh-pr-view.json"),
             _ => fx("gh-pr-checks-fail.json"),
-        })));
+        }));
         let s = mr_status(&gh, &repo(Some(Forge::Github)), None, "shop-142").unwrap().unwrap();
         assert_eq!(s.number, 143);
-        let gl = Fake(Box::new(|_, _| Ok(fx("glab-mr-list.json"))));
+        assert_eq!(gh.calls(), vec![
+            "gh pr list --state all --search shop-142 --json number,headRefName --limit 20",
+            "gh pr view 143 --json number,url,state,isDraft",
+            "gh pr checks 143 --json bucket,link",
+        ]);
+        let gl = Fake::new(|_, a| Ok(if a.last() == Some(&"projects/:id/merge_requests/7") { fx("glab-mr.json") } else { fx("glab-mr-list.json") }));
         let s = mr_status(&gl, &repo(Some(Forge::Gitlab)), None, "shop-142").unwrap().unwrap();
-        assert_eq!((s.number, s.ci), (7, Ci::None));
+        assert_eq!((s.number, s.ci), (7, Ci::Running));
+        assert_eq!(gl.calls(), vec![
+            "glab api --method GET projects/:id/merge_requests -f state=all -f search=shop-142 -f per_page=20",
+            "glab api projects/:id/merge_requests/7",
+        ]);
+    }
+
+    #[test]
+    fn no_checks_gives_ci_none() {
+        let gh = Fake::new(|_, a| if a[1] == "checks" { Err("gh: no checks reported".into()) } else { Ok(fx("gh-pr-view.json")) });
+        let mr = MrRef { number: 143, url: String::new(), branch: String::new() };
+        let s = mr_status(&gh, &repo(Some(Forge::Github)), Some(&mr), "shop-142").unwrap().unwrap();
+        assert_eq!((s.number, s.ci), (143, Ci::None));
+    }
+
+    #[test]
+    fn issues_runs_open_and_recent_closed() {
+        let f = Fake::new(|_, _| Ok(fx("gh-issue-list.json")));
+        let now = "2026-10-29T12:00:00Z".parse().unwrap();
+        assert_eq!(issues(&f, &repo(None), now).unwrap().len(), 6);
+        let fields = "number,title,state,stateReason,assignees,labels,url";
+        assert_eq!(f.calls(), vec![
+            format!("gh issue list --state open --json {fields} --limit 500"),
+            format!("gh issue list --state closed --search closed:>=2026-10-15 --json {fields} --limit 500"),
+        ]);
     }
 
     #[test]
     fn no_match_is_none() {
-        let gh = Fake(Box::new(|_, _| Ok(fx("gh-pr-list.json"))));
+        let gh = Fake::new(|_, _| Ok(fx("gh-pr-list.json")));
         assert!(mr_status(&gh, &repo(Some(Forge::Github)), None, "shop-999").unwrap().is_none());
         assert!(mr_status(&gh, &repo(None), None, "shop-142").unwrap().is_none());
     }
 
     #[test]
     fn missing_cli_is_an_error() {
-        let f = Fake(Box::new(|_, _| Err("gh: not found".into())));
+        let f = Fake::new(|_, _| Err("gh: not found".into()));
         let e = mr_status(&f, &repo(Some(Forge::Github)), None, "shop-142").unwrap_err();
         assert!(e.contains("gh"));
     }
