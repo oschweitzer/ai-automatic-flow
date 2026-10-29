@@ -1,6 +1,6 @@
 # Ticket Flow Dashboard
 
-Ticket Flow Dashboard is a desktop app built with Tauri 2. It shows your tickets from Jira, GitHub and GitLab in one place and lets you start and follow ticket-flow runs on them. Read `dashboard/PRODUCT.md` for the product goals and the design spec for the full behaviour.
+Ticket Flow Dashboard is a desktop app built with Tauri 2. It shows your tickets from Jira, GitHub and GitLab in one place and lets you start and follow ticket-flow runs on them. Read `dashboard/PRODUCT.md` for the product goals and the design spec at `docs/superpowers/specs/2026-10-26-ticket-flow-dashboard-design.md` for the full behaviour.
 
 ## Prerequisites
 
@@ -29,14 +29,14 @@ cargo test
 
 ## Cut a release
 
-Set the same version in `dashboard/app/package.json`, `dashboard/app/src-tauri/tauri.conf.json` and `dashboard/app/src-tauri/Cargo.toml`. Then tag and push.
+The release version comes from `tauri.conf.json`, not from the tag. First set the same version in `dashboard/app/package.json`, `dashboard/app/src-tauri/tauri.conf.json` and `dashboard/app/src-tauri/Cargo.toml`. Then tag `dashboard-v<that version>` and push the tag.
 
 ```sh
 git tag dashboard-v0.1.0
 git push origin dashboard-v0.1.0
 ```
 
-The `dashboard release` workflow runs the tests and builds on Ubuntu, Windows and macOS (universal). It creates a draft GitHub release with the installers. Check the files, then publish the draft by hand. You can also start the workflow from the Actions tab.
+The `dashboard release` workflow runs the tests and builds on Ubuntu, Windows and macOS (universal). It creates a draft GitHub release with the installers. Check the files, then publish the draft by hand. You can also start the workflow by hand from the Actions tab or with `gh workflow run`, but only once the workflow file is on the default branch. Before the merge, push a tag to test it.
 
 ## Unsigned builds
 
