@@ -1,0 +1,4 @@
+{"at":"2026-10-25T09:00:00Z","stage":"triage","event":"start"}
+{"at":"2026-10-25T09:01:00Z","stage":"triage","event":"end_state","outcome":"parked_needs_info"}
+{"at":"2026-10-26T09:00:00Z","stage":"triage","event":"start"}
+{"at":"2026-10-26T09:01:00Z","stage":"triage","event":"end","outcome":"continue"}

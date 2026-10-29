@@ -298,7 +298,7 @@ mod tests {
     fn read_runs_lists_every_folder() {
         let repo = tempfile::tempdir().unwrap();
         copy_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runs"), &repo.path().join(".ticket-flow/runs"));
-        assert_eq!(read_runs(repo.path()).len(), 6);
+        assert_eq!(read_runs(repo.path()).len(), 12);
     }
 
     #[test]

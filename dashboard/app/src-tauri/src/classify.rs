@@ -306,11 +306,49 @@ mod tests {
 
     #[test]
     fn waits_are_never_stale() {
+        // As runs.rs reads it: the wait is the last line, so the last line is not a start.
         let old = now() - Duration::minutes(300);
         for on in ["developer", "ci", "reviews"] {
-            let r = RunState { last_is_start: true, last_at: old, ..waiting(on) };
+            let r = RunState { last_at: old, ..waiting(on) };
             assert_eq!(go(&r).stale_minutes, None, "{on}");
         }
+    }
+
+    /// The spec's state table and its overrides, row by row, from fixture run folders.
+    #[test]
+    fn state_table_from_fixture_runs() {
+        let fx = |key: &str| crate::runs::read_run(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runs").join(key)).unwrap();
+        let soon = |r: &RunState| r.last_at + Duration::minutes(10);
+        let you = |reason| p(Section::Waiting, Some(WaitingOn::You), reason);
+        let rows: Vec<(&str, Option<TrackerTicket>, Option<MrStatus>, Placement)> = vec![
+            ("SHOP-144", None, None, you(Reason::PlanToApprove)),
+            ("SHOP-160", None, None, p(Section::InProgress, None, Reason::WaitingCi)),
+            ("SHOP-161", None, None, p(Section::InProgress, None, Reason::WaitingReviews)),
+            ("SHOP-162", None, Some(mr(MrState::Open)), you(Reason::MrToMerge)),
+            ("SHOP-162", None, Some(mr(MrState::Merged)), you(Reason::ClientStepsToPublish)),
+            ("SHOP-142", None, None, p(Section::Done, None, Reason::ReadyForQa)),
+            ("SHOP-163", None, None, p(Section::Done, None, Reason::Split)),
+            ("SHOP-139", None, None, p(Section::Waiting, Some(WaitingOn::Client), Reason::ParkedNeedsInfo)),
+            ("SHOP-133", None, None, you(Reason::EscalatedCi)),
+            ("SHOP-146", None, None, p(Section::InProgress, None, Reason::Running)),
+            ("SHOP-164", None, None, p(Section::InProgress, None, Reason::Running)), // a start after parked reopens
+            // Overrides: Jira done, merged and published, MR closed.
+            ("SHOP-144", Some(jira(StatusCategory::Done)), None, p(Section::Done, None, Reason::JiraDone)),
+            ("SHOP-139", None, Some(mr(MrState::Merged)), p(Section::Waiting, Some(WaitingOn::Client), Reason::ParkedNeedsInfo)),
+            ("SHOP-142", None, Some(mr(MrState::Merged)), p(Section::Done, None, Reason::ReadyForQa)),
+            ("SHOP-146", None, Some(mr(MrState::Closed)), p(Section::Done, None, Reason::MrClosed)),
+        ];
+        for (key, ticket, m, want) in rows {
+            let r = fx(key);
+            assert_eq!(classify(Some(&r), ticket.as_ref(), m.as_ref(), soon(&r)), want, "{key}");
+        }
+        // Last line `start`, nothing new for 45 minutes: running, flagged.
+        let r = fx("SHOP-165");
+        let stale = classify(Some(&r), None, None, r.last_at + Duration::minutes(45));
+        assert_eq!(stale, Placement { stale_minutes: Some(45), ..p(Section::InProgress, None, Reason::Running) });
+        // A wait does not count, however old.
+        let w = fx("SHOP-160");
+        assert_eq!(classify(Some(&w), None, None, w.last_at + Duration::minutes(300)).stale_minutes, None);
     }
 
     #[test]
