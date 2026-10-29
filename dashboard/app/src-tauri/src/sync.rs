@@ -1,10 +1,10 @@
-use crate::classify::{IssueState, StatusCategory};
+use crate::classify::{IssueState, MrState, StatusCategory};
 use crate::forge::{self, Runner, SystemRunner};
 use crate::jira::JiraClient;
 use crate::repos::{self, ProjectDef, Tracker};
 use crate::runs::{read_runs, RunState};
 use crate::settings::{self, Settings};
-use crate::snapshot::{issue_key, mr_key, run_of, snapshot, Remote, Snapshot, SourceState};
+use crate::snapshot::{self, issue_key, mr_key, pick_run, run_of, snapshot, Remote, Snapshot, SourceState};
 use chrono::{DateTime, Utc};
 use notify_debouncer_mini::notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
@@ -232,11 +232,21 @@ pub fn fetch_forge(r: &dyn Runner, projects: &[ProjectDef], runs: &[(String, Run
 
     let (mut mrs, mut mr_repos) = (HashMap::new(), HashMap::new());
     for p in projects {
-        let mut with_run = HashSet::new();
-        for (name, run) in runs {
+        let trackers = snapshot::trackers(p, &remote.jira, &remote.issues);
+        let own: Vec<&(String, RunState)> = runs.iter().filter(|(name, run)| p.repos.iter().any(|r| run_of(r, name, run))).collect();
+        let with_run: HashSet<String> = own.iter().map(|(_, run)| run.key.clone()).collect();
+        for key in &with_run {
+            let k = mr_key(&p.key, key);
+            // shortcut: a merged or closed MR is final, so it is reused, not asked again. A closed MR reopened later
+            // stays closed here. Replace with one `gh pr list` / `glab mr list` per repo if the per-ticket calls grow.
+            if let Some(old) = remote.mrs.get(&k).filter(|m| m.state != MrState::Open) {
+                mrs.insert(k, old.clone());
+                continue;
+            }
+            // The run the snapshot shows, from the last data known.
+            let cands: Vec<&(String, RunState)> = own.iter().copied().filter(|(_, run)| &run.key == key).collect();
+            let Some((name, run)) = pick_run(&cands, trackers.get(key), remote.mrs.get(&k), now) else { continue };
             let Some(repo) = p.repos.iter().find(|r| run_of(r, name, run)) else { continue };
-            if !with_run.insert(run.key.clone()) { continue } // the snapshot shows the first run of a key
-            let k = mr_key(&p.key, &run.key);
             match forge::mr_status(r, repo, run.mr.as_ref(), &run.key) {
                 Ok(Some(m)) => { mrs.insert(k, m); }
                 Ok(None) => {}
@@ -306,7 +316,7 @@ pub fn start(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::classify::{Ci, GithubIssue, MrState, MrStatus, Person};
+    use crate::classify::{Ci, GithubIssue, MrStatus, Person};
     use crate::repos::{Forge, Repo};
     use chrono::TimeZone;
     use std::io::Write;
@@ -337,6 +347,15 @@ mod tests {
         fn run(&self, _: &Path, p: &str, _: &[&str]) -> Result<String, String> { Err(format!("{p}: offline")) }
     }
 
+    /// Records each call and answers every one with the same output.
+    struct Recording<'a>(&'a std::sync::Mutex<Vec<String>>, &'static str);
+    impl Runner for Recording<'_> {
+        fn run(&self, _: &Path, p: &str, a: &[&str]) -> Result<String, String> {
+            self.0.lock().unwrap().push(format!("{p} {}", a.join(" ")));
+            Ok(self.1.to_string())
+        }
+    }
+
     #[test]
     fn forge_error_keeps_last_data() {
         let now = Utc.with_ymd_and_hms(2026, 10, 28, 12, 0, 0).unwrap();
@@ -363,6 +382,25 @@ mod tests {
         let s = &remote.forge_state;
         assert!(s.configured && !s.ok);
         assert_eq!((s.error.as_deref(), s.last_ok_at), (Some("gh: offline"), Some(before)));
+    }
+
+    #[test]
+    fn merged_mr_is_not_queried_again() {
+        let now = Utc.with_ymd_and_hms(2026, 10, 28, 12, 0, 0).unwrap();
+        let repo = Repo { name: "shop".into(), path: PathBuf::from(env!("CARGO_MANIFEST_DIR")), forge: Some(Forge::Github), tracker: Tracker::Jira, jira_project: None, remote: None };
+        let projects = vec![ProjectDef { key: "SHOP".into(), tracker: Tracker::Jira, repos: vec![repo] }];
+        let run = crate::runs::read_run(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runs/SHOP-142")).unwrap();
+        let runs = vec![("shop".to_string(), run)];
+        let calls = std::sync::Mutex::new(vec![]);
+        let gh = Recording(&calls, r#"{"number":87,"url":"u","state":"MERGED","isDraft":false}"#);
+        let mut remote = Remote::default();
+        fetch_forge(&gh, &projects, &runs, &mut remote, now);
+        assert!(!calls.lock().unwrap().is_empty());
+        assert_eq!(remote.mrs[&mr_key("SHOP", "SHOP-142")].state, MrState::Merged);
+        calls.lock().unwrap().clear();
+        fetch_forge(&gh, &projects, &runs, &mut remote, now);
+        assert_eq!(*calls.lock().unwrap(), vec!["gh api user"]); // the login only, no MR call
+        assert_eq!(remote.mrs[&mr_key("SHOP", "SHOP-142")].state, MrState::Merged);
     }
 
     #[test]

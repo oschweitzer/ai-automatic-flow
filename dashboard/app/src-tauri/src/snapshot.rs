@@ -1,4 +1,4 @@
-use crate::classify::{classify, Ci, GithubIssue, IssueState, MrStatus, Person, Placement, TrackerTicket};
+use crate::classify::{classify, Ci, GithubIssue, IssueState, MrStatus, Person, Placement, Section, TrackerTicket, WaitingOn};
 use crate::jira::{JiraProject, Sprint};
 use crate::repos::{Forge, ProjectDef, Repo, Tracker};
 use crate::runs::{steps, PlanSummary, RunState, StepInfo, StepState, TriageInfo, STAGES};
@@ -63,6 +63,26 @@ pub fn issue_key(number: u64) -> String { format!("GH-{number}") }
 /// Whether a run read from repository `name` belongs to `repo`. Folder names repeat across roots, so the path decides.
 pub fn run_of(repo: &Repo, name: &str, run: &RunState) -> bool { repo.name == name && run.run_dir.starts_with(&repo.path) }
 
+/// A project's tracker tickets by key.
+pub fn trackers(p: &ProjectDef, jira: &[JiraProject], issues: &HashMap<String, Vec<GithubIssue>>) -> HashMap<String, TrackerTicket> {
+    match p.tracker {
+        Tracker::Jira => jira.iter().filter(|j| j.key == p.key).flat_map(|j| &j.tickets)
+            .map(|t| (t.key.clone(), TrackerTicket::Jira(t.clone()))).collect(),
+        Tracker::Github => issues.get(&p.key).into_iter().flatten()
+            .map(|i| (issue_key(i.number), TrackerTicket::Github(i.clone()))).collect(),
+    }
+}
+
+/// The run a ticket shows when several repositories hold one: the one waiting on the developer, else the latest.
+pub fn pick_run<'a>(runs: &[&'a (String, RunState)], tracker: Option<&TrackerTicket>, mr: Option<&MrStatus>, now: DateTime<Utc>) -> Option<&'a (String, RunState)> {
+    let you = |r: &RunState| {
+        let pl = classify(Some(r), tracker, mr, now);
+        pl.section == Section::Waiting && pl.waiting_on == Some(WaitingOn::You)
+    };
+    // `rev` keeps the first of equal runs, as `max_by_key` returns the last.
+    runs.iter().rev().copied().max_by_key(|(_, r)| (you(r), r.last_at))
+}
+
 #[allow(clippy::too_many_arguments)] // the signature the plan fixed
 pub fn build(projects: &[ProjectDef], runs: &[(String, RunState)],      // (repo name, run)
              jira: &[JiraProject], issues: &HashMap<String, Vec<GithubIssue>>, // issues by project key
@@ -72,17 +92,14 @@ pub fn build(projects: &[ProjectDef], runs: &[(String, RunState)],      // (repo
     let _ = (me_jira, me_github);
     let mut out = Vec::new();
     for p in projects {
-        let trackers: HashMap<String, TrackerTicket> = match p.tracker {
-            Tracker::Jira => jira.iter().filter(|j| j.key == p.key).flat_map(|j| &j.tickets)
-                .map(|t| (t.key.clone(), TrackerTicket::Jira(t.clone()))).collect(),
-            Tracker::Github => issues.get(&p.key).into_iter().flatten()
-                .map(|i| (issue_key(i.number), TrackerTicket::Github(i.clone()))).collect(),
-        };
+        let trackers = trackers(p, jira, issues);
         let own: Vec<&(String, RunState)> = runs.iter().filter(|(name, run)| p.repos.iter().any(|r| run_of(r, name, run))).collect();
         let keys: BTreeSet<&String> = trackers.keys().chain(own.iter().map(|(_, r)| &r.key)).collect();
         for key in keys {
-            let run = own.iter().find(|(_, r)| &r.key == key).map(|(repo, r)| (repo, r));
-            out.push(ticket(p, key, run, trackers.get(key), mrs.get(&mr_key(&p.key, key)), now));
+            let (tracker, mr) = (trackers.get(key), mrs.get(&mr_key(&p.key, key)));
+            let cands: Vec<&(String, RunState)> = own.iter().copied().filter(|(_, r)| &r.key == key).collect();
+            let run = pick_run(&cands, tracker, mr, now).map(|(repo, r)| (repo, r));
+            out.push(ticket(p, key, run, tracker, mr, now));
         }
     }
     out
@@ -177,7 +194,7 @@ pub fn snapshot(projects: &[ProjectDef], runs: &[(String, RunState)], remote: &R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::classify::{JiraTicket, MrState, Section, StatusCategory};
+    use crate::classify::{JiraTicket, MrState, StatusCategory};
     use crate::repos::Repo;
     use crate::runs::read_run;
     use chrono::TimeZone;
@@ -327,6 +344,20 @@ mod tests {
         let t = go(&projects, &[run("a", "SHOP-1"), run("b", "PAY-12")], &[], &HashMap::new());
         let got: Vec<(&str, &str)> = t.iter().map(|t| (t.project.as_str(), t.key.as_str())).collect();
         assert_eq!(got, vec![("PAY", "PAY-12"), ("SHOP", "SHOP-1")]);
+    }
+
+    #[test]
+    fn two_repos_show_the_run_that_waits_on_you_else_the_latest() {
+        let projects = vec![ProjectDef { key: "SHOP".into(), tracker: Tracker::Jira,
+            repos: vec![repo("back", Tracker::Jira, None), repo("front", Tracker::Jira, None)] }];
+        let run = |repo: &str, fx: &str| (repo.to_string(), RunState { key: "SHOP-1".into(), ..read_run(&fixture(fx)).unwrap() });
+        let shown = |runs: &[(String, RunState)]| go(&projects, runs, &[], &HashMap::new()).remove(0).repo.unwrap();
+        // SHOP-133 waits on you (escalated_ci, older), SHOP-146 runs (newer).
+        assert_eq!(shown(&[run("back", "SHOP-146"), run("front", "SHOP-133")]), "front");
+        assert_eq!(shown(&[run("back", "SHOP-133"), run("front", "SHOP-146")]), "back");
+        // Neither waits on you: the latest activity wins (SHOP-146 at 10:05, SHOP-160 at 09:01).
+        assert_eq!(shown(&[run("back", "SHOP-160"), run("front", "SHOP-146")]), "front");
+        assert_eq!(shown(&[run("back", "SHOP-146"), run("front", "SHOP-160")]), "back");
     }
 
     #[test]
