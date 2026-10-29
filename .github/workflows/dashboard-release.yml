@@ -1,0 +1,91 @@
+name: dashboard release
+
+on:
+  push:
+    tags:
+      - 'dashboard-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    permissions:
+      contents: write # creates the draft release and uploads the installers
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu
+            os: ubuntu-22.04
+            args: ''
+            rust-targets: ''
+          - name: windows
+            os: windows-latest
+            args: ''
+            rust-targets: ''
+          - name: macos
+            os: macos-latest
+            args: '--target universal-apple-darwin'
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: dashboard/app
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux packages
+        if: runner.os == 'Linux'
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev
+
+      # cmake and the C toolchain come with the runner images. NASM does not on Windows.
+      - name: Install NASM
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nasm -y --no-progress
+          Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\NASM'
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+          package_json_file: dashboard/app/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: dashboard/app/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: dashboard/app/src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm test
+
+      - run: cargo test
+        working-directory: dashboard/app/src-tauri
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: dashboard/app
+          tagName: dashboard-v__VERSION__
+          releaseName: 'Ticket Flow Dashboard v__VERSION__'
+          releaseBody: 'Unsigned builds. See dashboard/README.md for the first launch steps per OS.'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
