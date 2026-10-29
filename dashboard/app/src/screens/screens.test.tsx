@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { openPath, openUrl } from '@tauri-apps/plugin-opener';
 import App from '../App';
+import { age, reasonText } from './util';
 import type { Person, Snapshot, SettingsView, Ticket } from '../types';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
@@ -43,6 +44,11 @@ function fixture(): Snapshot {
         planPath: '/r/shop-front/.ticket-flow/runs/SHOP-144/plan.md' }),
       ticket({ key: 'SHOP-146', project: 'SHOP', summary: 'Pagination API', repo: 'shop-api', sprintId: 10, assignees: [alice],
         placement: { section: 'inProgress', waitingOn: null, reason: 'jira_in_progress', staleMinutes: null } }),
+      ticket({ key: 'SHOP-147', project: 'SHOP', summary: 'Pair work', repo: 'shop-api', sprintId: 10, assignees: [me, alice],
+        placement: { section: 'inProgress', waitingOn: null, reason: 'jira_in_progress', staleMinutes: null } }),
+      ticket({ key: 'SHOP-131', project: 'SHOP', summary: 'Logo email', repo: 'shop-front', sprintId: 10, assignees: [me], localRun: true,
+        placement: { section: 'done', waitingOn: null, reason: 'ready_for_qa', staleMinutes: null },
+        mr: { number: 81, url: 'https://gitlab.example/shop/-/merge_requests/81', state: 'merged', draft: false, ci: 'green', pipelineUrl: null } }),
       ticket({ key: 'SHOP-150', project: 'SHOP', summary: 'Export CSV', sprintId: 10,
         placement: { section: 'todo', waitingOn: null, reason: 'jira_todo', staleMinutes: null } }),
       ticket({ key: 'GH-7', project: 'acme/site', summary: 'Broken footer', repo: 'site', assignees: [gh], ticketStatus: 'open',
@@ -92,7 +98,7 @@ describe('screens', () => {
     const cells = (key: string) => [...(within(screen.getByRole('main')).getByText(key).closest('tr') as HTMLElement).querySelectorAll('td')]
       .slice(1, 6).map((td) => td.textContent);
     // SHOP: me only, sprint 24. SHOP-146 (Alice) and SHOP-150 (unassigned) are filtered out.
-    expect(cells('SHOP')).toEqual(['1', '0', '1 1 CI rouge', '0', '0']);
+    expect(cells('SHOP')).toEqual(['1', '0', '2 1 CI rouge', '0', '1']);
     expect(cells('acme/site')).toEqual(['0', '0', '0', '1', '0']);
     const nav = within(screen.getByRole('complementary')).getByRole('button', { name: /^SHOP/ });
     expect(nav.textContent).toContain('1');
@@ -132,6 +138,7 @@ describe('screens', () => {
     expect(r.tabIndex).toBe(0);
     fireEvent.click(r);
     expect(screen.getByRole('heading', { level: 2, name: 'SHOP-142' })).toBeTruthy();
+    expect(r.getAttribute('aria-current')).toBe('true');
     expect(screen.queryByRole('heading', { name: 'À toi de jouer' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Pipeline' }));
     expect(openUrl).toHaveBeenCalledWith('https://gitlab.example/p/1');
@@ -192,13 +199,13 @@ describe('screens', () => {
   it('projects_grouped_by_tracker', async () => {
     await renderApp();
     const side = within(screen.getByRole('complementary'));
-    expect(side.getByRole('heading', { name: 'Jira' })).toBeTruthy();
-    expect(side.getByRole('heading', { name: 'GitHub' })).toBeTruthy();
+    expect(side.getByRole('navigation', { name: 'Jira' })).toBeTruthy();
+    expect(side.getByRole('navigation', { name: 'GitHub' })).toBeTruthy();
     cleanup();
     const s = fixture();
     s.projects = s.projects.filter((p) => p.tracker === 'jira');
     await renderApp(s);
-    expect(within(screen.getByRole('complementary')).queryByRole('heading', { name: 'GitHub' })).toBeNull();
+    expect(within(screen.getByRole('complementary')).queryByRole('navigation', { name: 'GitHub' })).toBeNull();
     expect(within(screen.getByRole('main')).queryByText('GitHub')).toBeNull();
   });
 
@@ -214,5 +221,47 @@ describe('screens', () => {
     expect(panel.getByText('public')).toBeTruthy();
     fireEvent.click(panel.getByRole('button', { name: 'Issue GitHub' }));
     expect(openUrl).toHaveBeenCalledWith('https://github.com/acme/site/issues/7');
+  });
+
+  it('colleague_in_progress_shows_colleague_initials', async () => {
+    await renderApp();
+    openProject(/^SHOP/);
+    expect(within(row('SHOP-147')).getByText('en cours chez AL')).toBeTruthy();
+    const mine = fixture().tickets.find((x) => x.key === 'SHOP-147') as Ticket;
+    expect(reasonText('fr', { ...mine, assignees: [me] }, me)).toBe('en cours');
+  });
+
+  it('mr_state_is_a_word', async () => {
+    await renderApp();
+    openProject(/^SHOP/);
+    expect(within(row('SHOP-142')).getByText('!87 · brouillon')).toBeTruthy();
+    expect(within(row('SHOP-131')).getByText('!81 · mergée')).toBeTruthy();
+    fireEvent.click(row('SHOP-131'));
+    const panel = within(screen.getByRole('heading', { level: 2, name: 'SHOP-131' }).closest('section') as HTMLElement);
+    expect(panel.getByText('!81 · mergée')).toBeTruthy();
+  });
+
+  it('age_uses_localised_units', () => {
+    const now = Date.now();
+    expect(age(now - 40_000, 'fr', now)).toBe('40 s');
+    expect(age(now - 12 * 60_000, 'en', now)).toBe('12 min');
+    expect(age(now - 2 * 86_400_000, 'fr', now)).toBe('2 j');
+    expect(age(now - 2 * 86_400_000, 'en', now)).toBe('2 d');
+  });
+
+  it('settings_load_failure_blocks_save', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_settings') throw 'settings: keychain locked';
+      if (cmd === 'get_snapshot') return fixture();
+      return undefined;
+    });
+    render(<App />);
+    await act(async () => {});
+    expect(screen.getByRole('alert').textContent).toContain('settings: keychain locked');
+    const save = screen.getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.submit(save.closest('form') as HTMLFormElement);
+    await act(async () => {});
+    expect(invoke).not.toHaveBeenCalledWith('save_settings', expect.anything());
   });
 });

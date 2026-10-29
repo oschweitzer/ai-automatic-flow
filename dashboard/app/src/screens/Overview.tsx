@@ -47,7 +47,7 @@ export function Overview({ lang, snapshot, onOpen }: Props) {
                       </td>
                       {big(c.todo)}
                       {big(c.done)}
-                      <td className="tf-sub nowrap">{at ? t(lang, 'ago', { age: age(at) }) : ''}</td>
+                      <td className="tf-sub nowrap">{at ? t(lang, 'ago', { age: age(at, lang) }) : ''}</td>
                     </tr>
                   );
                 })}

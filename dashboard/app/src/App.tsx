@@ -14,12 +14,13 @@ export default function App() {
   const { snapshot, refresh } = useSnapshot();
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [view, setView] = useState<View>({ kind: 'all' });
+  const [loadError, setLoadError] = useState<string>();
   // Bumped when a project's filters change, so the sidebar and overview counts follow.
   const [, prefsChanged] = useReducer((n: number) => n + 1, 0);
 
   useEffect(() => {
     invoke<SettingsView>('get_settings')
-      .catch((e) => { console.error(e); return NO_SETTINGS; })
+      .catch((e) => { setLoadError(String(e)); return NO_SETTINGS; })
       .then((s) => { setSettings(s); if (!s.roots.length) setView({ kind: 'settings' }); });
   }, []);
 
@@ -32,7 +33,7 @@ export default function App() {
       <Sidebar lang={lang} snapshot={snapshot} view={view} onView={setView} onRefresh={() => refresh().catch(console.error)} />
       <main className="main">
         {view.kind === 'settings' ? (
-          <Settings initial={settings}
+          <Settings initial={settings} loadError={loadError}
             onSaved={(s) => { setSettings(s); if (s.roots.length) setView({ kind: 'all' }); }}
             onCancel={settings.roots.length ? () => setView({ kind: 'all' }) : undefined} />
         ) : !snapshot ? null : project ? (

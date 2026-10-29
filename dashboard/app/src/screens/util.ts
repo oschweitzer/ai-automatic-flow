@@ -2,20 +2,26 @@ import { openPath, openUrl } from '@tauri-apps/plugin-opener';
 import { initials, t, type Lang } from '../i18n';
 import { counts, visible } from '../filter';
 import { loadPrefs } from '../prefs';
-import type { Person, ProjectView, Snapshot, Ticket } from '../types';
+import type { MrStatus, Person, ProjectView, Snapshot, Ticket } from '../types';
 
 /** Links open in the system's default app: http(s) in the browser, local paths in the file manager or editor. */
 export function open(target: string) {
   (/^https?:\/\//.test(target) ? openUrl(target) : openPath(target)).catch(console.error);
 }
 
-/** "40 s", "12 min", "3 h", then days. Spoken around it by the `synced`, `ago` and `data_age` copy. */
-export function age(at: string | number, now = Date.now()): string {
+/** "40 s", "12 min", "3 h", then days ("2 j", "2 d"). Spoken around it by the `synced`, `ago` and `data_age` copy. */
+export function age(at: string | number, lang: Lang, now = Date.now()): string {
   const s = Math.max(0, Math.floor((now - (typeof at === 'number' ? at : Date.parse(at))) / 1000));
-  if (s < 60) return `${s} s`;
-  if (s < 3600) return `${Math.floor(s / 60)} min`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h`;
-  return `${Math.floor(s / 86400)} d`;
+  if (s < 60) return t(lang, 'unit_s', { n: s });
+  if (s < 3600) return t(lang, 'unit_min', { n: Math.floor(s / 60) });
+  if (s < 86400) return t(lang, 'unit_h', { n: Math.floor(s / 3600) });
+  return t(lang, 'unit_d', { n: Math.floor(s / 86400) });
+}
+
+/** "!87 · brouillon", "#12 · mergée": the MR number and its state in words. */
+export function mrText(lang: Lang, project: ProjectView, mr: MrStatus): string {
+  const state = mr.state === 'open' && mr.draft ? 'draft' : mr.state;
+  return `${project.forge === 'github' ? '#' : '!'}${mr.number} · ${t(lang, `mr_state_${state}`)}`;
 }
 
 export const meOf = (s: Snapshot, p: ProjectView): Person | null => (p.tracker === 'github' ? s.meGithub : s.meJira);
@@ -43,11 +49,12 @@ export function short(name: string): string {
   return i.length > 1 ? i : name.slice(0, 2).toUpperCase();
 }
 
-/** The words of a ticket's state: "à toi · plan à valider", "en cours chez AL". */
-export function reasonText(lang: Lang, tk: Ticket): string {
+/** The words of a ticket's state: "à toi · plan à valider", "en cours chez AL" (the first assignee who is not me). */
+export function reasonText(lang: Lang, tk: Ticket, me: Person | null): string {
   const { reason, waitingOn } = tk.placement;
   if (reason === 'jira_in_progress') {
-    return tk.assignees.length ? t(lang, reason, { initials: short(tk.assignees[0].displayName) }) : t(lang, 'running');
+    const other = tk.assignees.find((a) => a.accountId !== me?.accountId);
+    return other ? t(lang, reason, { initials: short(other.displayName) }) : t(lang, 'running');
   }
   if (waitingOn === 'you') return `${t(lang, 'waiting_on_you')} · ${t(lang, reason)}`;
   return t(lang, reason);

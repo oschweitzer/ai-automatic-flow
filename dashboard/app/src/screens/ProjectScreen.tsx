@@ -66,7 +66,7 @@ export function ProjectScreen({ lang, snapshot, project, onPrefs }: Props) {
           <div className="list">
             {SECTIONS.map((s) => (
               <Section key={s} title={t(lang, `section_${s}`)} count={sections[s].length} open={prefs.open.includes(s)} onToggle={() => toggle(s)}>
-                <TicketTable lang={lang} tickets={sections[s]} me={me} mrPrefix={project.forge === 'github' ? '#' : '!'}
+                <TicketTable lang={lang} tickets={sections[s]} me={me} project={project}
                   selected={selected} onSelect={select} />
               </Section>
             ))}
@@ -81,16 +81,16 @@ export function ProjectScreen({ lang, snapshot, project, onPrefs }: Props) {
                     text={yours.length === 1 ? t(lang, 'your_turn_one') : t(lang, 'your_turn_many', { n: yours.length })}
                     items={yours.map((x) => ({
                       title: `${x.key} · ${x.summary}`,
-                      meta: [reasonText(lang, x), x.lastActivity && age(x.lastActivity)].filter(Boolean).join(' · '),
+                      meta: [reasonText(lang, x, me), x.lastActivity && age(x.lastActivity, lang)].filter(Boolean).join(' · '),
                       icon: FAILED.has(x.placement.reason) ? 'alert' : 'check',
                       onClick: () => openFirst(x),
                     }))}
                     actionLabel={t(lang, 'open_first')} onAction={() => openFirst(yours[0])} />
                 )}
                 <section className="mini">
-                  <h2>{sprintNames.length ? sprintNames.join(' · ') : t(lang, 'summary')}</h2>
+                  <h2 className="label">{sprintNames.length ? sprintNames.join(' · ') : t(lang, 'summary')}</h2>
                   {SECTIONS.map((s) => (
-                    <div className="mini-line" key={s}><span>{t(lang, `section_${s}`)}</span><span>{sections[s].length}</span></div>
+                    <div className="mini-line body" key={s}><span>{t(lang, `section_${s}`)}</span><span>{sections[s].length}</span></div>
                   ))}
                 </section>
               </>

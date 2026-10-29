@@ -90,6 +90,15 @@ const fr: Record<string, string> = {
   risk: 'risque : {risk}',
   people_filter: 'Filtrer par personne',
   sprint_filter: 'Filtrer par sprint',
+  settings_load_error: 'Réglages illisibles, enregistrement bloqué : {error}',
+  mr_state_open: 'ouverte',
+  mr_state_draft: 'brouillon',
+  mr_state_merged: 'mergée',
+  mr_state_closed: 'fermée',
+  unit_s: '{n} s',
+  unit_min: '{n} min',
+  unit_h: '{n} h',
+  unit_d: '{n} j',
 };
 
 const en: Record<string, string> = {
@@ -181,6 +190,15 @@ const en: Record<string, string> = {
   risk: 'risk: {risk}',
   people_filter: 'Filter by person',
   sprint_filter: 'Filter by sprint',
+  settings_load_error: 'Settings could not be read, saving is blocked: {error}',
+  mr_state_open: 'open',
+  mr_state_draft: 'draft',
+  mr_state_merged: 'merged',
+  mr_state_closed: 'closed',
+  unit_s: '{n} s',
+  unit_min: '{n} min',
+  unit_h: '{n} h',
+  unit_d: '{n} d',
 };
 
 const dict = { fr, en };

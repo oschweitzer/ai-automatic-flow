@@ -1,7 +1,7 @@
 import { Button, Icon, StatusPill, StepList } from '../ui';
 import { t, type Lang } from '../i18n';
 import type { ProjectView, Ticket } from '../types';
-import { open } from './util';
+import { mrText, open } from './util';
 
 const ISSUE_STATE: Record<string, string> = { open: 'issue_state_open', completed: 'issue_state_completed', notPlanned: 'issue_state_not_planned' };
 
@@ -27,9 +27,10 @@ export function DetailPanel({ lang, project, ticket: tk, onClose }: Props) {
         <Icon name="X" />
       </button>
       <h2 id="panel-title" className="panel-title">{tk.key}</h2>
-      <p className="panel-meta">{meta.filter(Boolean).join(' · ')}</p>
+      <p className="panel-meta small">{meta.filter(Boolean).join(' · ')}</p>
       <div className="tags">
         {status && <StatusPill>{status}</StatusPill>}
+        {tk.mr && <StatusPill>{mrText(lang, project, tk.mr)}</StatusPill>}
         {github && tk.labels.map((l) => <StatusPill key={l}>{l}</StatusPill>)}
         {project.public && <StatusPill>{t(lang, 'public')}</StatusPill>}
         {tk.triage?.size && <StatusPill>{t(lang, 'size', { size: tk.triage.size })}</StatusPill>}
@@ -40,15 +41,15 @@ export function DetailPanel({ lang, project, ticket: tk, onClose }: Props) {
 
       {tk.localRun && tk.steps.length > 0 && (
         <>
-          <h3>{tk.track ? t(lang, 'progress', { current: tk.track.current, total: tk.track.total }) : t(lang, 'col_progress')}</h3>
+          <h3 className="label">{tk.track ? t(lang, 'progress', { current: tk.track.current, total: tk.track.total }) : t(lang, 'col_progress')}</h3>
           <StepList steps={tk.steps.map((s) => ({ name: s.name, state: s.state, note: s.note ?? undefined }))} />
         </>
       )}
 
       {tk.plan && (
         <>
-          <h3>{t(lang, 'plan')}</h3>
-          <div className="plan">
+          <h3 className="label">{t(lang, 'plan')}</h3>
+          <div className="plan small">
             {tk.plan.behaviour && <p>{tk.plan.behaviour}</p>}
             {tk.plan.files.length > 0 && <ul>{tk.plan.files.map((f) => <li key={f}><code className="code">{f}</code></li>)}</ul>}
             {tk.planPath && <button type="button" className="link" onClick={() => open(tk.planPath as string)}>{t(lang, 'plan_full')}</button>}
@@ -58,7 +59,7 @@ export function DetailPanel({ lang, project, ticket: tk, onClose }: Props) {
 
       {links.some(([, to]) => to) && (
         <>
-          <h3>{t(lang, 'links')}</h3>
+          <h3 className="label">{t(lang, 'links')}</h3>
           <div className="links">
             {links.map(([label, to]) => to && <Button key={label} onClick={() => open(to)}>{label}</Button>)}
           </div>

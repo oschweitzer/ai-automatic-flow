@@ -26,16 +26,16 @@ export function Sidebar({ lang, snapshot, view, onView, onRefresh }: Props) {
 
   const failing = (name: string, s: SourceState) =>
     s.configured && !s.ok && (
-      <p className="sync sync-bad" key={name}>
+      <p className="sync sync-bad small" key={name}>
         <Icon name="TriangleAlert" />
-        <span>{[t(lang, 'source_failed', { source: name }), s.lastOkAt && t(lang, 'data_age', { age: age(s.lastOkAt, now) }), s.error]
+        <span>{[t(lang, 'source_failed', { source: name }), s.lastOkAt && t(lang, 'data_age', { age: age(s.lastOkAt, lang, now) }), s.error]
           .filter(Boolean).join(' · ')}</span>
       </p>
     );
 
   return (
     <aside className="rail">
-      <div className="brand"><b>Ticket Flow</b><small>Dashboard</small></div>
+      <div className="brand"><b className="body-strong">Ticket Flow</b><span className="small">Dashboard</span></div>
       <nav className="rail-nav">
         <NavItem label={t(lang, 'all_projects')} icon="grid" selected={view.kind === 'all'} onClick={() => onView({ kind: 'all' })} />
       </nav>
@@ -44,7 +44,7 @@ export function Sidebar({ lang, snapshot, view, onView, onRefresh }: Props) {
         if (!projects.length) return null;
         return (
           <nav className="rail-nav" key={tr} aria-labelledby={`group-${tr}`}>
-            <h6 id={`group-${tr}`}>{t(lang, `group_${tr}`)}</h6>
+            <p className="rail-group label" id={`group-${tr}`}>{t(lang, `group_${tr}`)}</p>
             {projects.map((p) => (
               <NavItem key={p.key} label={p.key} sub={p.repos.join(', ')} icon="folder" count={projectCounts(snapshot, p).you}
                 selected={view.kind === 'project' && view.key === p.key} onClick={() => onView({ kind: 'project', key: p.key })} />
@@ -55,10 +55,12 @@ export function Sidebar({ lang, snapshot, view, onView, onRefresh }: Props) {
       <div className="rail-foot">
         {snapshot && (
           <>
-            {failing('Jira', snapshot.jira)}
-            {failing('GitHub/GitLab', snapshot.forge)}
-            <div className="sync">
-              <span>{t(lang, 'synced', { age: age(snapshot.syncedAt, now) })}</span>
+            <div role="status">
+              {failing('Jira', snapshot.jira)}
+              {failing('GitHub/GitLab', snapshot.forge)}
+            </div>
+            <div className="sync small">
+              <span>{t(lang, 'synced', { age: age(snapshot.syncedAt, lang, now) })}</span>
               <button type="button" className="icon-btn" aria-label={t(lang, 'refresh')} title={t(lang, 'refresh')} onClick={onRefresh}>
                 <Icon name="RefreshCw" />
               </button>

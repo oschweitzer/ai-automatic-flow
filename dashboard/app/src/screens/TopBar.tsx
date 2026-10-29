@@ -46,7 +46,7 @@ export function TopBar({ lang, project, me, people, prefs, onPrefs, query, onQue
       )}
       <label className="search">
         <Icon name="Search" />
-        <input type="search" value={query} placeholder={t(lang, 'search')} aria-label={t(lang, 'search')}
+        <input type="search" className="body" value={query} placeholder={t(lang, 'search')} aria-label={t(lang, 'search')}
           onChange={(e) => onQuery(e.target.value)} />
       </label>
     </div>
