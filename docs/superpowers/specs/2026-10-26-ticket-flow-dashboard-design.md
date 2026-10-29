@@ -137,7 +137,7 @@ The Rust side watches each repository's `.ticket-flow/runs/` and re-reads a run 
 
 ### Forge
 
-The Rust side calls the `gh` and `glab` command-line tools, as the plugin's `forge.sh` does, so it reuses the developer's existing login and stores no forge token. Each poll reads one list of MRs per repository (the latest 200 on GitHub, 100 on GitLab) and matches it to every ticket of the project, with or without a run. The MR is the one numbered in `mr.json` when a run has it, else the most recent one whose branch name holds the ticket key. An MR missing from the list keeps its last known state. CI state comes from the MR's checks on GitHub and from its head pipeline on GitLab, read for open MRs only.
+The Rust side calls the `gh` and `glab` command-line tools, as the plugin's `forge.sh` does, so it reuses the developer's existing login and stores no forge token. Each poll reads the MR list of each repository and matches it to every ticket of the project, with or without a run. That list is the 200 newest pull requests on GitHub (open ones with their checks), and the 100 most recently updated merge requests on GitLab. The MR is the one numbered in `mr.json` when a run has it, else the newest matching one, an open one first. A matching MR has the ticket key in its branch name. An MR missing from the list keeps its last known state. So does a renamed branch: the ticket keeps its last MR until it leaves the tracker. CI state comes from the MR's checks on GitHub and from its head pipeline on GitLab, read for open MRs only.
 
 ### Jira
 

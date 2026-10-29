@@ -1,0 +1,7 @@
+[
+  {"headRefName":"feat/SHOP-150-draft","isDraft":true,"number":150,"state":"OPEN","url":"https://github.com/acme/shop/pull/150"},
+  {"headRefName":"feat/SHOP-149-fail","isDraft":false,"number":149,"state":"OPEN","url":"https://github.com/acme/shop/pull/149"},
+  {"headRefName":"feat/SHOP-131-dropped","isDraft":false,"number":131,"state":"CLOSED","url":"https://github.com/acme/shop/pull/131"},
+  {"headRefName":"feat/SHOP-130-done","isDraft":false,"number":130,"state":"MERGED","url":"https://github.com/acme/shop/pull/130"},
+  {"headRefName":"feat/SHOP-120-old","isDraft":false,"number":120,"state":"OPEN","url":"https://github.com/acme/shop/pull/120"}
+]

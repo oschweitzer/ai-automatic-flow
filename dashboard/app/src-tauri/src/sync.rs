@@ -376,7 +376,8 @@ mod tests {
     fn mr(remote: &Remote, key: &str) -> Option<(u64, MrState, Ci)> {
         remote.mrs.get(&mr_key("SHOP", key)).map(|m| (m.number, m.state.clone(), m.ci.clone()))
     }
-    const PR_LIST: &str = "gh pr list --state all --limit 200 --json number,url,state,isDraft,headRefName,statusCheckRollup";
+    const GH_OPEN: &str = "gh pr list --state open --limit 100 --json number,url,state,isDraft,headRefName,statusCheckRollup";
+    const GH_ALL: &str = "gh pr list --state all --limit 200 --json number,url,state,isDraft,headRefName";
 
     #[test]
     fn forge_error_keeps_last_data() {
@@ -385,20 +386,23 @@ mod tests {
         let projects = vec![ProjectDef { key: "acme/shop".into(), tracker: Tracker::Github, repos: vec![repo] }];
         let run = crate::runs::read_run(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runs/SHOP-142")).unwrap();
         let runs = vec![("shop".to_string(), RunState { key: "GH-142".into(), ..run })];
-        let issue = GithubIssue { number: 142, title: "t".into(), state: IssueState::Open, assignees: vec![], labels: vec![], url: "u".into() };
-        let mr = MrStatus { number: 87, url: "u".into(), state: MrState::Open, draft: false, ci: Ci::Green, pipeline_url: None };
+        let issue = |n| GithubIssue { number: n, title: "t".into(), state: IssueState::Open, assignees: vec![], labels: vec![], url: "u".into() };
+        let mr = |n| MrStatus { number: n, url: "u".into(), state: MrState::Open, draft: false, ci: Ci::Green, pipeline_url: None };
         let before = Utc.with_ymd_and_hms(2026, 10, 28, 11, 0, 0).unwrap();
         let mut remote = Remote {
             me_github: Some(Person { account_id: "al".into(), display_name: "al".into() }),
-            issues: HashMap::from([("acme/shop".to_string(), vec![issue])]),
-            mrs: HashMap::from([(mr_key("acme/shop", "GH-142"), mr)]),
+            issues: HashMap::from([("acme/shop".to_string(), vec![issue(142), issue(7)])]),
+            mrs: HashMap::from([(mr_key("acme/shop", "GH-142"), mr(87)), (mr_key("acme/shop", "GH-7"), mr(9))]),
+            mr_repos: HashMap::from([(mr_key("acme/shop", "GH-7"), "shop".to_string())]),
             public: HashMap::from([("acme/shop".to_string(), true)]),
             forge_state: SourceState { configured: true, ok: true, error: None, last_ok_at: Some(before) },
             ..Remote::default()
         };
         fetch_forge(&Fake::new(|_, p, _| Err(format!("{p}: offline"))), &projects, &runs, &mut remote, now);
-        assert_eq!(remote.issues["acme/shop"].len(), 1);
+        assert_eq!(remote.issues["acme/shop"].len(), 2);
         assert_eq!(remote.mrs[&mr_key("acme/shop", "GH-142")].number, 87);
+        assert_eq!(remote.mrs[&mr_key("acme/shop", "GH-7")].number, 9);
+        assert_eq!(remote.mr_repos.get(&mr_key("acme/shop", "GH-7")).map(String::as_str), Some("shop"));
         assert_eq!(remote.public.get("acme/shop"), Some(&true));
         assert!(remote.me_github.is_some());
         let s = &remote.forge_state;
@@ -439,12 +443,12 @@ mod tests {
     }
 
     #[test]
-    fn fifty_tickets_cost_one_github_call() {
+    fn fifty_tickets_cost_two_github_list_calls() {
         let keys: Vec<String> = (1..=50).map(|n| format!("SHOP-{n}")).collect();
         let mut remote = Remote { jira: tickets(&keys, StatusCategory::Todo), ..Remote::default() };
         let f = gh(list(&[pr(70, "OPEN", "feat/SHOP-70-x"), pr(7, "OPEN", "feat/SHOP-7-x")]));
         fetch_forge(&f, &shop(Forge::Github), &[], &mut remote, now());
-        assert_eq!(f.calls(), vec!["gh api user", PR_LIST]);
+        assert_eq!(f.calls(), vec!["gh api user", GH_OPEN, GH_ALL]);
         // A to-do ticket is matched too.
         assert_eq!(mr(&remote, "SHOP-7"), Some((7, MrState::Open, Ci::None)));
         assert_eq!(remote.mrs.len(), 1);
@@ -462,6 +466,31 @@ mod tests {
         ]);
         assert_eq!(mr(&remote, "SHOP-142"), Some((9, MrState::Open, Ci::Running)));
         assert_eq!(mr(&remote, "SHOP-133"), Some((71, MrState::Closed, Ci::None)));
+    }
+
+    #[test]
+    fn gitlab_pipeline_error_keeps_the_last_ci_of_the_same_mr() {
+        let runs = vec![("shop".to_string(), with_mr(run("SHOP-142"), 9))];
+        let old = MrStatus { number: 9, url: "u".into(), state: MrState::Open, draft: false, ci: Ci::Red, pipeline_url: Some("p".into()) };
+        let mut remote = Remote { mrs: HashMap::from([(mr_key("SHOP", "SHOP-142"), old)]), ..Remote::default() };
+        let f = Fake::new(|_, _, a| if a.get(2) == Some(&"GET") { Ok(fx("glab-mr-list.json")) } else { Err("glab: HTTP 500".into()) });
+        fetch_forge(&f, &shop(Forge::Gitlab), &runs, &mut remote, now());
+        assert_eq!(mr(&remote, "SHOP-142"), Some((9, MrState::Open, Ci::Red)));
+        assert_eq!(remote.mrs[&mr_key("SHOP", "SHOP-142")].pipeline_url.as_deref(), Some("p"));
+        assert_eq!(remote.forge_state.error.as_deref(), Some("glab: HTTP 500"));
+    }
+
+    #[test]
+    fn tracker_ticket_in_two_repos_takes_the_first_repos_mr() {
+        let mut remote = Remote { jira: tickets(&["SHOP-150".into()], StatusCategory::InProgress), ..Remote::default() };
+        let f = Fake::new(|d, _, a| Ok(match a[0] {
+            "api" => r#"{"login":"al"}"#.into(),
+            _ if d.ends_with("SHOP-142") => list(&[pr(9, "OPEN", "feat/SHOP-150-a")]),
+            _ => list(&[pr(12, "OPEN", "feat/SHOP-150-b")]),
+        }));
+        fetch_forge(&f, &two_repos(), &[], &mut remote, now());
+        assert_eq!(mr(&remote, "SHOP-150"), Some((9, MrState::Open, Ci::None)));
+        assert_eq!(remote.mr_repos.get(&mr_key("SHOP", "SHOP-150")).map(String::as_str), Some("a"));
     }
 
     fn fx(n: &str) -> String {

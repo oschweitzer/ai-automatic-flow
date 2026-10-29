@@ -94,13 +94,23 @@ fn has_key(branch: &str, key: &str) -> bool {
 /// A repository's MR with its head branch.
 pub type Listed = (String, MrStatus);
 
-/// One read of the repository's MRs, most recent first. GitLab's list has no pipeline: see `pipeline`.
+/// The repository's MRs, in no useful order. GitLab's list has no pipeline: see `pipeline`.
 pub fn mr_list(r: &dyn Runner, repo: &Repo) -> Result<Vec<Listed>, String> {
     let dir = repo.path.as_path();
+    let gh = |args: &[&str]| parse_gh_list(&r.run(dir, "gh", args)?).ok_or_else(|| "gh: unexpected pr list output".to_string());
     match repo.forge {
         None => Ok(vec![]),
-        Some(Forge::Github) => parse_gh_list(&r.run(dir, "gh", &["pr", "list", "--state", "all", "--limit", "200",
-            "--json", "number,url,state,isDraft,headRefName,statusCheckRollup"])?).ok_or_else(|| "gh: unexpected pr list output".into()),
+        Some(Forge::Github) => {
+            // Checks are slow to list, so only open PRs carry them. An open PR older than the 100 newest open ones
+            // is left out of both and keeps its last status.
+            let open = gh(&["pr", "list", "--state", "open", "--limit", "100", "--json", "number,url,state,isDraft,headRefName,statusCheckRollup"])?;
+            let mut done: Vec<Listed> = gh(&["pr", "list", "--state", "all", "--limit", "200", "--json", "number,url,state,isDraft,headRefName"])?
+                .into_iter().filter(|(_, m)| m.state != MrState::Open).collect();
+            // A PR merged between the two calls is in both: the later read wins.
+            let gone: Vec<u64> = done.iter().map(|(_, m)| m.number).collect();
+            done.extend(open.into_iter().filter(|(_, o)| !gone.contains(&o.number)));
+            Ok(done)
+        }
         Some(Forge::Gitlab) => parse_glab_list(&r.run(dir, "glab", &["api", "--method", "GET", "projects/:id/merge_requests",
             "-f", "state=all", "-f", "per_page=100", "-f", "order_by=updated_at"])?).ok_or_else(|| "glab: unexpected merge requests output".into()),
     }
@@ -111,9 +121,13 @@ pub fn pipeline(r: &dyn Runner, repo: &Repo, iid: u64) -> Result<Option<MrStatus
     Ok(parse_glab(&r.run(&repo.path, "glab", &["api", &format!("projects/:id/merge_requests/{iid}")])?))
 }
 
-/// The run's `mr.json` number, else the first MR whose branch holds the key.
+/// The run's `mr.json` number, else the newest MR whose branch holds the key, an open one first.
+/// List order is not used: GitLab's updated_at order moves an old MR up when someone comments on it.
 pub fn match_mr<'a>(list: &'a [Listed], number: Option<u64>, key: &str) -> Option<&'a MrStatus> {
-    list.iter().find(|(b, m)| number.map_or_else(|| has_key(b, key), |n| m.number == n)).map(|(_, m)| m)
+    match number {
+        Some(n) => list.iter().map(|(_, m)| m).find(|m| m.number == n),
+        None => list.iter().filter(|(b, _)| has_key(b, key)).map(|(_, m)| m).max_by_key(|m| (m.state == MrState::Open, m.number)),
+    }
 }
 
 pub fn parse_gh_list(list: &str) -> Option<Vec<Listed>> {
@@ -132,7 +146,7 @@ pub fn parse_gh_list(list: &str) -> Option<Vec<Listed>> {
             else if checks.iter().any(fail) { Ci::Red }
             else if words.iter().any(|w| ["PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "EXPECTED"].contains(&w.as_str())) { Ci::Running }
             else if words.iter().all(|w| ["SUCCESS", "NEUTRAL", "SKIPPED"].contains(&w.as_str())) { Ci::Green }
-            else { Ci::Red };
+            else { Ci::Red }; // deliberate: an unknown word (STALE, a null conclusion with no status) counts as failed
         let link = |c: &Value| ["detailsUrl", "targetUrl"].iter().find_map(|k| c[*k].as_str().filter(|s| !s.is_empty())).map(String::from);
         let pipeline_url = checks.iter().find(|c| fail(c)).or(checks.first()).and_then(link);
         Some((text(v, "headRefName"), MrStatus { number: v["number"].as_u64()?, url: text(v, "url"), state, draft: v["isDraft"].as_bool().unwrap_or(false), ci, pipeline_url }))
@@ -269,7 +283,7 @@ pub(crate) mod tests {
 
     #[test]
     fn parses_gh_list_with_each_ci_case() {
-        let v = parse_gh_list(&fx("gh-pr-list.json")).unwrap();
+        let v = parse_gh_list(&fx("gh-pr-list-open.json")).unwrap();
         let row = |n: u64| v.iter().find(|(_, m)| m.number == n).map(|(_, m)| m).unwrap();
         let ci = |n: u64| row(n).ci.clone();
         let url = |n: u64| row(n).pipeline_url.clone();
@@ -281,10 +295,14 @@ pub(crate) mod tests {
         assert_eq!((ci(148), url(148).as_deref()), (Ci::Red, Some("https://ci.example.com/build/3")));
         assert_eq!((ci(147), url(147).as_deref()), (Ci::Running, Some("https://github.com/acme/shop/actions/runs/4/job/5")));
         assert_eq!((ci(146), url(146)), (Ci::Running, None));
-        assert_eq!((row(145).state.clone(), ci(145)), (MrState::Merged, Ci::Green));
-        assert_eq!((row(144).state.clone(), ci(144)), (MrState::Closed, Ci::Red));
+        assert_eq!(ci(145), Ci::Green);
+        assert_eq!(ci(144), Ci::Red);
         assert_eq!((ci(143), ci(142), ci(141)), (Ci::Red, Ci::Red, Ci::Running));
         assert!(parse_gh_list("not json").is_none());
+        // The all-states list has no checks field.
+        let all = parse_gh_list(&fx("gh-pr-list-all.json")).unwrap();
+        let st: Vec<(u64, MrState, Ci)> = all.iter().map(|(_, m)| (m.number, m.state.clone(), m.ci.clone())).collect();
+        assert_eq!(st[2..4], [(131, MrState::Closed, Ci::None), (130, MrState::Merged, Ci::None)]);
     }
 
     #[test]
@@ -300,11 +318,21 @@ pub(crate) mod tests {
         assert_eq!(v[0].1.url, "https://gitlab.com/acme/shop/-/merge_requests/9");
     }
 
+    const GH_OPEN: &str = "gh pr list --state open --limit 100 --json number,url,state,isDraft,headRefName,statusCheckRollup";
+    const GH_ALL: &str = "gh pr list --state all --limit 200 --json number,url,state,isDraft,headRefName";
+
     #[test]
-    fn list_calls_are_one_read_per_repo() {
-        let gh = Fake::new(|_, _, _| Ok(fx("gh-pr-list.json")));
-        assert_eq!(mr_list(&gh, &repo(Some(Forge::Github))).unwrap().len(), 10);
-        assert_eq!(gh.calls(), vec!["gh pr list --state all --limit 200 --json number,url,state,isDraft,headRefName,statusCheckRollup"]);
+    fn list_and_pipeline_calls() {
+        let gh = Fake::new(|_, _, a| Ok(if a[3] == "open" { fx("gh-pr-list-open.json") } else { fx("gh-pr-list-all.json") }));
+        let v = mr_list(&gh, &repo(Some(Forge::Github))).unwrap();
+        assert_eq!(gh.calls(), vec![GH_OPEN, GH_ALL]);
+        let mut got: Vec<(u64, MrState, Ci)> = v.iter().map(|(_, m)| (m.number, m.state.clone(), m.ci.clone())).collect();
+        got.sort_by_key(|g| g.0);
+        // Open PRs come from the open list with their checks. #120, open but outside it, is left out to keep its last status.
+        assert_eq!(got.len(), 12);
+        assert_eq!(got[..3], [(130, MrState::Merged, Ci::None), (131, MrState::Closed, Ci::None), (141, MrState::Open, Ci::Running)]);
+        assert_eq!(got[11], (150, MrState::Open, Ci::None));
+        assert!(v.iter().find(|(_, m)| m.number == 150).unwrap().1.draft);
         let gl = Fake::new(|_, _, a| Ok(if a.get(2) == Some(&"GET") { fx("glab-mr-list.json") } else { fx("glab-mr.json") }));
         assert_eq!(mr_list(&gl, &repo(Some(Forge::Gitlab))).unwrap().len(), 4);
         let s = pipeline(&gl, &repo(Some(Forge::Gitlab)), 9).unwrap().unwrap();
@@ -317,22 +345,40 @@ pub(crate) mod tests {
         assert!(mr_list(&bad, &repo(Some(Forge::Github))).unwrap_err().contains("gh"));
         let off = Fake::new(|_, _, _| Err("glab: not found".into()));
         assert!(mr_list(&off, &repo(Some(Forge::Gitlab))).unwrap_err().contains("glab"));
+        // The open list failing fails the repo, even when the all-states list answers.
+        let half = Fake::new(|_, _, a| if a[3] == "open" { Err("gh: HTTP 502".into()) } else { Ok(fx("gh-pr-list-all.json")) });
+        assert_eq!(mr_list(&half, &repo(Some(Forge::Github))).unwrap_err(), "gh: HTTP 502");
     }
 
-    fn listed(rows: &[(&str, u64)]) -> Vec<Listed> {
-        rows.iter().map(|(b, n)| (b.to_string(), MrStatus { number: *n, url: String::new(), state: MrState::Open, draft: false, ci: Ci::None, pipeline_url: None })).collect()
+    fn listed(rows: &[(&str, u64, MrState)]) -> Vec<Listed> {
+        rows.iter().map(|(b, n, s)| (b.to_string(), MrStatus { number: *n, url: String::new(), state: s.clone(), draft: false, ci: Ci::None, pipeline_url: None })).collect()
     }
 
     #[test]
-    fn matches_by_number_else_first_branch_with_the_key() {
-        let l = listed(&[("feat/shop-142-x", 5), ("feat/SHOP-14-fix", 6), ("feat/shop-14-old", 4), ("feat/xshop-14", 7)]);
+    fn matches_by_number_else_newest_open_branch_with_the_key() {
+        use MrState::*;
+        let l = listed(&[("feat/shop-142-x", 5, Open), ("feat/shop-14-old", 4, Open), ("feat/SHOP-14-fix", 6, Open), ("feat/xshop-14", 7, Open)]);
         assert_eq!(match_mr(&l, Some(4), "SHOP-14").map(|m| m.number), Some(4));
         assert_eq!(match_mr(&l, Some(99), "SHOP-14").map(|m| m.number), None);
-        // Most recent first: the list order decides between two branches holding the key.
+        // Whatever the list order, the highest number wins among branches holding the key.
         assert_eq!(match_mr(&l, None, "SHOP-14").map(|m| m.number), Some(6));
         assert!(match_mr(&l[..1], None, "SHOP-14").is_none());
         assert!(match_mr(&l[3..], None, "SHOP-14").is_none());
         assert_eq!(match_mr(&l, None, "shop-142").map(|m| m.number), Some(5));
+        // An open MR beats a newer merged one.
+        let l = listed(&[("feat/SHOP-14-b", 8, Merged), ("feat/SHOP-14-a", 6, Open)]);
+        assert_eq!(match_mr(&l, None, "SHOP-14").map(|m| m.number), Some(6));
+    }
+
+    #[test]
+    fn an_old_merged_mr_listed_first_loses_to_the_newer_open_one() {
+        let gh = parse_gh_list(r#"[{"number":87,"url":"u","state":"MERGED","isDraft":false,"headRefName":"feat/SHOP-142-a"},
+            {"number":91,"url":"u","state":"OPEN","isDraft":false,"headRefName":"feat/SHOP-142-b"}]"#).unwrap();
+        assert_eq!(match_mr(&gh, None, "SHOP-142").map(|m| m.number), Some(91));
+        // GitLab orders by updated_at: a comment on the old merged MR moves it up.
+        let gl = parse_glab_list(r#"[{"iid":7,"state":"merged","source_branch":"feat/SHOP-142-first"},
+            {"iid":9,"state":"opened","source_branch":"feat/SHOP-142-tva"}]"#).unwrap();
+        assert_eq!(match_mr(&gl, None, "SHOP-142").map(|m| m.number), Some(9));
     }
 
     #[test]
