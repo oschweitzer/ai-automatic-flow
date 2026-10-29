@@ -49,17 +49,18 @@ describe('visible', () => {
   });
 
   it('backlog_filter', () => {
-    const ts = [tk('B-1', { assignees: [me], sprintId: null }), tk('B-2', { localRun: true }), tk('B-3', { localRun: true, sprintId: 9 })];
+    const ts = [tk('B-1', { assignees: [me], sprintId: null }), tk('B-2', { localRun: true }), tk('B-3', { assignees: [me], sprintId: 9 })];
     expect(keys(visible(ts, shop, prefs(), me, ''))).toEqual(['B-2']);
     expect(keys(visible(ts, shop, prefs({ sprints: [7, 'backlog'] }), me, ''))).toEqual(['B-1', 'B-2']);
   });
 
   it('local_run_without_sprint_always_shows', () => {
     // A backlog ticket, or a key Jira does not know, still shows with its run (spec, Review Focus).
-    const ts = [tk('B-1', { localRun: true, sprintId: null }, { section: 'waiting', waitingOn: 'you', reason: 'plan_to_approve' })];
+    const wait = { section: 'waiting' as const, waitingOn: 'you' as const, reason: 'plan_to_approve' as const };
+    const ts = [tk('B-1', { localRun: true, sprintId: null }, wait), tk('F-1', { localRun: true, sprintId: 999 }, wait)];
     const shown = visible(ts, shop, prefs(), me, '');
-    expect(keys(shown)).toEqual(['B-1']);
-    expect(counts(shown).you).toBe(1);
+    expect(keys(shown)).toEqual(['B-1', 'F-1']);
+    expect(counts(shown).you).toBe(2);
   });
 
   it('kanban_project_ignores_sprints', () => {

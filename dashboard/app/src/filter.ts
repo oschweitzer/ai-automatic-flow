@@ -14,8 +14,8 @@ export function visible(tickets: Ticket[], project: ProjectView, prefs: ProjectP
         : p === '__unassigned__' ? t.assignees.length === 0 && !t.localRun
         : t.assignees.some((a) => a.accountId === p));
     if (!person) return false;
-    // A local run outside any sprint (backlog, future sprint, key unknown to Jira) is the developer's: it always shows.
-    if (project.hasSprints && !(t.localRun && t.sprintId == null)) {
+    // A local run is the developer's whatever its sprint (backlog, future sprint, key unknown to Jira): it always shows.
+    if (project.hasSprints && !t.localRun) {
       const sprint = t.sprintId == null ? prefs.sprints.includes('backlog') : prefs.sprints.includes(t.sprintId);
       if (!sprint) return false;
     }
