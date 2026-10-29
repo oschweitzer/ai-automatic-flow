@@ -1,10 +1,10 @@
-use crate::classify::{IssueState, MrState, StatusCategory};
+use crate::classify::MrState;
 use crate::forge::{self, Runner, SystemRunner};
 use crate::jira::JiraClient;
 use crate::repos::{self, ProjectDef, Tracker};
 use crate::runs::{read_runs, RunState};
 use crate::settings::{self, Settings};
-use crate::snapshot::{self, issue_key, mr_key, pick_run, run_of, snapshot, Remote, Snapshot, SourceState};
+use crate::snapshot::{self, mr_key, pick_run, run_of, snapshot, Remote, Snapshot, SourceState};
 use chrono::{DateTime, Utc};
 use notify_debouncer_mini::notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
@@ -205,7 +205,7 @@ async fn fetch_jira(remote: &mut Remote, s: &Settings, token: Option<String>, pr
     remote.jira_state = after(errors, true, &remote.jira_state, Utc::now());
 }
 
-/// GitHub issues, visibility and login, then MR status. Each failing item keeps its last value.
+/// GitHub issues, visibility and login, then one MR list per repository. Each failing item keeps its last value.
 pub fn fetch_forge(r: &dyn Runner, projects: &[ProjectDef], runs: &[(String, RunState)], remote: &mut Remote, now: DateTime<Utc>) {
     let mut errors = vec![];
     for p in projects.iter().filter(|p| p.tracker == Tracker::Github) {
@@ -231,62 +231,56 @@ pub fn fetch_forge(r: &dyn Runner, projects: &[ProjectDef], runs: &[(String, Run
         }
     }
 
+    // One MR list per repository, matched here to every ticket of the project.
     let (mut mrs, mut mr_repos) = (HashMap::new(), HashMap::new());
     for p in projects {
         let trackers = snapshot::trackers(p, &remote.jira, &remote.issues);
         let own: Vec<&(String, RunState)> = runs.iter().filter(|(name, run)| p.repos.iter().any(|r| run_of(r, name, run))).collect();
-        let with_run: HashSet<String> = own.iter().map(|(_, run)| run.key.clone()).collect();
-        for key in &with_run {
-            let k = mr_key(&p.key, key);
-            // shortcut: a merged or closed MR is final, so it is reused, not asked again. A closed MR reopened later
-            // stays closed here. Replace with one `gh pr list` / `glab mr list` per repo if the per-ticket calls grow.
-            if let Some(old) = remote.mrs.get(&k).filter(|m| m.state != MrState::Open) {
-                mrs.insert(k, old.clone());
-                continue;
-            }
-            // The run the snapshot shows, from the last data known.
-            let cands: Vec<&(String, RunState)> = own.iter().copied().filter(|(_, run)| &run.key == key).collect();
-            let Some((name, run)) = pick_run(&cands, trackers.get(key), remote.mrs.get(&k), now) else { continue };
-            let Some(repo) = p.repos.iter().find(|r| run_of(r, name, run)) else { continue };
-            match forge::mr_status(r, repo, run.mr.as_ref(), &run.key) {
-                Ok(Some(m)) => { mrs.insert(k, m); }
-                Ok(None) => {}
+        let with_run: HashSet<&String> = own.iter().map(|(_, run)| &run.key).collect();
+        // The run the snapshot shows, from the last data known: its repo and its `mr.json` decide the MR.
+        let shown: Vec<&(String, RunState)> = with_run.iter().filter_map(|key| {
+            let cands: Vec<&(String, RunState)> = own.iter().copied().filter(|(_, run)| &run.key == *key).collect();
+            pick_run(&cands, trackers.get(*key), remote.mrs.get(&mr_key(&p.key, key)), now)
+        }).collect();
+        let tracker_only: Vec<&String> = trackers.keys().filter(|k| !with_run.contains(k)).collect();
+        for repo in p.repos.iter().filter(|r| r.forge.is_some()) {
+            let list = match forge::mr_list(r, repo) {
+                Ok(l) => l,
                 Err(e) => {
                     errors.push(e);
-                    if let Some(old) = remote.mrs.get(&k) { mrs.insert(k, old.clone()); }
+                    continue;
                 }
+            };
+            // Run tickets in their own repo only, tracker-only tickets in the first repo that has their MR.
+            let wanted = shown.iter().filter(|(name, run)| run_of(repo, name, run)).map(|(_, run)| (&run.key, run.mr.as_ref().map(|m| m.number), true))
+                .chain(tracker_only.iter().map(|k| (*k, None, false)));
+            for (key, number, has_run) in wanted {
+                let k = mr_key(&p.key, key);
+                if mrs.contains_key(&k) { continue; }
+                let Some(found) = forge::match_mr(&list, number, key) else { continue };
+                let mut m = found.clone();
+                if repo.forge == Some(repos::Forge::Gitlab) && m.state == MrState::Open {
+                    match forge::pipeline(r, repo, m.number) {
+                        Ok(Some(full)) => m = full,
+                        Ok(None) => {}
+                        Err(e) => {
+                            errors.push(e);
+                            if let Some(old) = remote.mrs.get(&k).filter(|o| o.number == m.number) {
+                                (m.ci, m.pipeline_url) = (old.ci.clone(), old.pipeline_url.clone());
+                            }
+                        }
+                    }
+                }
+                if !has_run { mr_repos.insert(k.clone(), repo.name.clone()); }
+                mrs.insert(k, m);
             }
         }
-        // Tickets without a run search an MR only once their tracker says they started.
-        let started: Vec<String> = match p.tracker {
-            Tracker::Jira => remote.jira.iter().filter(|j| j.key == p.key).flat_map(|j| &j.tickets)
-                .filter(|t| t.status_category != StatusCategory::Todo).map(|t| t.key.clone()).collect(),
-            Tracker::Github => remote.issues.get(&p.key).into_iter().flatten()
-                .filter(|i| i.state != IssueState::Open).map(|i| issue_key(i.number)).collect(),
-        };
-        for key in started.iter().filter(|k| !with_run.contains(*k)) {
+        // An MR older than the list window, or in a list that failed, keeps its last status.
+        for key in with_run.iter().chain(&tracker_only) {
             let k = mr_key(&p.key, key);
-            let (mut found, mut failed) = (false, false);
-            for repo in p.repos.iter().filter(|r| r.forge.is_some()) {
-                match forge::mr_status(r, repo, None, key) {
-                    Ok(Some(m)) => {
-                        mrs.insert(k.clone(), m);
-                        mr_repos.insert(k.clone(), repo.name.clone());
-                        found = true;
-                        break;
-                    }
-                    Ok(None) => {}
-                    Err(e) => {
-                        errors.push(e);
-                        failed = true;
-                    }
-                }
-            }
-            // A repo that failed may hold the MR: keep the last one known.
-            if !found && failed {
-                if let Some(old) = remote.mrs.get(&k) { mrs.insert(k.clone(), old.clone()); }
-                if let Some(old) = remote.mr_repos.get(&k) { mr_repos.insert(k.clone(), old.clone()); }
-            }
+            if mrs.contains_key(&k) { continue; }
+            if let Some(old) = remote.mrs.get(&k) { mrs.insert(k.clone(), old.clone()); }
+            if let Some(old) = remote.mr_repos.get(&k) { mr_repos.insert(k, old.clone()); }
         }
     }
     (remote.mrs, remote.mr_repos) = (mrs, mr_repos);
@@ -317,7 +311,7 @@ pub fn start(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::classify::{Ci, GithubIssue, MrStatus, Person};
+    use crate::classify::{Ci, GithubIssue, IssueState, MrState, MrStatus, Person, StatusCategory};
     use crate::repos::{Forge, Repo};
     use chrono::TimeZone;
     use std::io::Write;
@@ -343,19 +337,46 @@ mod tests {
         assert!(rx.recv_timeout(Duration::from_secs(3)).is_ok(), "no change seen within 3 s");
     }
 
-    struct Failing;
-    impl Runner for Failing {
-        fn run(&self, _: &Path, p: &str, _: &[&str]) -> Result<String, String> { Err(format!("{p}: offline")) }
-    }
+    use crate::forge::tests::Fake;
+    use crate::jira::JiraProject;
+    use crate::classify::JiraTicket;
 
-    /// Records each call and answers every one with the same output.
-    struct Recording<'a>(&'a std::sync::Mutex<Vec<String>>, &'static str);
-    impl Runner for Recording<'_> {
-        fn run(&self, _: &Path, p: &str, a: &[&str]) -> Result<String, String> {
-            self.0.lock().unwrap().push(format!("{p} {}", a.join(" ")));
-            Ok(self.1.to_string())
-        }
+    fn now() -> DateTime<Utc> { Utc.with_ymd_and_hms(2026, 10, 28, 12, 0, 0).unwrap() }
+    fn runs_dir() -> PathBuf { Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runs") }
+    fn run(key: &str) -> RunState { crate::runs::read_run(&runs_dir().join(key)).unwrap() }
+    fn with_mr(mut r: RunState, number: u64) -> RunState {
+        r.mr.as_mut().unwrap().number = number;
+        r
     }
+    fn repo(name: &str, path: PathBuf, forge: Forge) -> Repo {
+        Repo { name: name.into(), path, forge: Some(forge), tracker: Tracker::Jira, jira_project: None, remote: None }
+    }
+    /// Project SHOP with one repository holding every fixture run.
+    fn shop(forge: Forge) -> Vec<ProjectDef> {
+        vec![ProjectDef { key: "SHOP".into(), tracker: Tracker::Jira, repos: vec![repo("shop", runs_dir(), forge)] }]
+    }
+    /// Project SHOP with repo "a" holding run SHOP-142 and repo "b" holding run SHOP-133.
+    fn two_repos() -> Vec<ProjectDef> {
+        let repos = vec![repo("a", runs_dir().join("SHOP-142"), Forge::Github), repo("b", runs_dir().join("SHOP-133"), Forge::Github)];
+        vec![ProjectDef { key: "SHOP".into(), tracker: Tracker::Jira, repos }]
+    }
+    fn tickets(keys: &[String], c: StatusCategory) -> Vec<JiraProject> {
+        let t = |k: &String| JiraTicket { key: k.clone(), summary: "s".into(), issue_type: "Story".into(), status: "s".into(),
+            status_category: c.clone(), assignee: None, sprint_id: None, url: "u".into() };
+        vec![JiraProject { key: "SHOP".into(), sprints: vec![], has_sprints: false, tickets: keys.iter().map(t).collect() }]
+    }
+    fn pr(n: u64, state: &str, branch: &str) -> String {
+        format!(r#"{{"number":{n},"url":"https://github.com/acme/shop/pull/{n}","state":"{state}","isDraft":false,"headRefName":"{branch}","statusCheckRollup":[]}}"#)
+    }
+    fn list(prs: &[String]) -> String { format!("[{}]", prs.join(",")) }
+    /// Answers `gh pr list` with `prs` and `gh api user` with a login.
+    fn gh(prs: String) -> Fake {
+        Fake::new(move |_, _, a| Ok(if a[0] == "api" { r#"{"login":"al"}"#.into() } else { prs.clone() }))
+    }
+    fn mr(remote: &Remote, key: &str) -> Option<(u64, MrState, Ci)> {
+        remote.mrs.get(&mr_key("SHOP", key)).map(|m| (m.number, m.state.clone(), m.ci.clone()))
+    }
+    const PR_LIST: &str = "gh pr list --state all --limit 200 --json number,url,state,isDraft,headRefName,statusCheckRollup";
 
     #[test]
     fn forge_error_keeps_last_data() {
@@ -375,7 +396,7 @@ mod tests {
             forge_state: SourceState { configured: true, ok: true, error: None, last_ok_at: Some(before) },
             ..Remote::default()
         };
-        fetch_forge(&Failing, &projects, &runs, &mut remote, now);
+        fetch_forge(&Fake::new(|_, p, _| Err(format!("{p}: offline"))), &projects, &runs, &mut remote, now);
         assert_eq!(remote.issues["acme/shop"].len(), 1);
         assert_eq!(remote.mrs[&mr_key("acme/shop", "GH-142")].number, 87);
         assert_eq!(remote.public.get("acme/shop"), Some(&true));
@@ -386,22 +407,118 @@ mod tests {
     }
 
     #[test]
-    fn merged_mr_is_not_queried_again() {
-        let now = Utc.with_ymd_and_hms(2026, 10, 28, 12, 0, 0).unwrap();
-        let repo = Repo { name: "shop".into(), path: PathBuf::from(env!("CARGO_MANIFEST_DIR")), forge: Some(Forge::Github), tracker: Tracker::Jira, jira_project: None, remote: None };
-        let projects = vec![ProjectDef { key: "SHOP".into(), tracker: Tracker::Jira, repos: vec![repo] }];
-        let run = crate::runs::read_run(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runs/SHOP-142")).unwrap();
-        let runs = vec![("shop".to_string(), run)];
-        let calls = std::sync::Mutex::new(vec![]);
-        let gh = Recording(&calls, r#"{"number":87,"url":"u","state":"MERGED","isDraft":false}"#);
+    fn reopened_mr_shows_open_next_cycle() {
+        let runs = vec![("shop".to_string(), run("SHOP-142"))];
         let mut remote = Remote::default();
-        fetch_forge(&gh, &projects, &runs, &mut remote, now);
-        assert!(!calls.lock().unwrap().is_empty());
-        assert_eq!(remote.mrs[&mr_key("SHOP", "SHOP-142")].state, MrState::Merged);
-        calls.lock().unwrap().clear();
-        fetch_forge(&gh, &projects, &runs, &mut remote, now);
-        assert_eq!(*calls.lock().unwrap(), vec!["gh api user"]); // the login only, no MR call
-        assert_eq!(remote.mrs[&mr_key("SHOP", "SHOP-142")].state, MrState::Merged);
+        fetch_forge(&gh(list(&[pr(87, "CLOSED", "feat/SHOP-142-discount-code")])), &shop(Forge::Github), &runs, &mut remote, now());
+        assert_eq!(mr(&remote, "SHOP-142"), Some((87, MrState::Closed, Ci::None)));
+        fetch_forge(&gh(list(&[pr(87, "OPEN", "feat/SHOP-142-discount-code")])), &shop(Forge::Github), &runs, &mut remote, now());
+        assert_eq!(mr(&remote, "SHOP-142"), Some((87, MrState::Open, Ci::None)));
+    }
+
+    #[test]
+    fn run_shows_its_new_mr_after_the_old_one_merged() {
+        let mut remote = Remote::default();
+        let runs = vec![("shop".to_string(), run("SHOP-142"))];
+        fetch_forge(&gh(list(&[pr(87, "MERGED", "feat/SHOP-142-discount-code")])), &shop(Forge::Github), &runs, &mut remote, now());
+        assert_eq!(mr(&remote, "SHOP-142"), Some((87, MrState::Merged, Ci::None)));
+        let runs = vec![("shop".to_string(), with_mr(run("SHOP-142"), 91))];
+        let both = list(&[pr(91, "OPEN", "feat/SHOP-142-again"), pr(87, "MERGED", "feat/SHOP-142-discount-code")]);
+        fetch_forge(&gh(both), &shop(Forge::Github), &runs, &mut remote, now());
+        assert_eq!(mr(&remote, "SHOP-142"), Some((91, MrState::Open, Ci::None)));
+    }
+
+    #[test]
+    fn mr_missing_from_the_list_keeps_its_last_status() {
+        let runs = vec![("shop".to_string(), run("SHOP-142"))];
+        let old = MrStatus { number: 87, url: "u".into(), state: MrState::Open, draft: false, ci: Ci::Green, pipeline_url: None };
+        let mut remote = Remote { mrs: HashMap::from([(mr_key("SHOP", "SHOP-142"), old)]), ..Remote::default() };
+        fetch_forge(&gh(list(&[pr(5, "OPEN", "feat/other")])), &shop(Forge::Github), &runs, &mut remote, now());
+        assert_eq!(mr(&remote, "SHOP-142"), Some((87, MrState::Open, Ci::Green)));
+        assert!(remote.forge_state.ok);
+    }
+
+    #[test]
+    fn fifty_tickets_cost_one_github_call() {
+        let keys: Vec<String> = (1..=50).map(|n| format!("SHOP-{n}")).collect();
+        let mut remote = Remote { jira: tickets(&keys, StatusCategory::Todo), ..Remote::default() };
+        let f = gh(list(&[pr(70, "OPEN", "feat/SHOP-70-x"), pr(7, "OPEN", "feat/SHOP-7-x")]));
+        fetch_forge(&f, &shop(Forge::Github), &[], &mut remote, now());
+        assert_eq!(f.calls(), vec!["gh api user", PR_LIST]);
+        // A to-do ticket is matched too.
+        assert_eq!(mr(&remote, "SHOP-7"), Some((7, MrState::Open, Ci::None)));
+        assert_eq!(remote.mrs.len(), 1);
+    }
+
+    #[test]
+    fn gitlab_reads_the_pipeline_of_open_matched_mrs_only() {
+        let runs = vec![("shop".to_string(), with_mr(run("SHOP-142"), 9)), ("shop".to_string(), run("SHOP-133"))];
+        let f = Fake::new(|_, _, a| Ok(if a.get(2) == Some(&"GET") { fx("glab-mr-list.json") } else { fx("glab-mr.json") }));
+        let mut remote = Remote::default();
+        fetch_forge(&f, &shop(Forge::Gitlab), &runs, &mut remote, now());
+        assert_eq!(f.calls(), vec![
+            "glab api --method GET projects/:id/merge_requests -f state=all -f per_page=100 -f order_by=updated_at",
+            "glab api projects/:id/merge_requests/9",
+        ]);
+        assert_eq!(mr(&remote, "SHOP-142"), Some((9, MrState::Open, Ci::Running)));
+        assert_eq!(mr(&remote, "SHOP-133"), Some((71, MrState::Closed, Ci::None)));
+    }
+
+    fn fx(n: &str) -> String {
+        std::fs::read_to_string(format!("{}/tests/fixtures/forge/{n}", env!("CARGO_MANIFEST_DIR"))).unwrap()
+    }
+
+    #[test]
+    fn failing_list_keeps_that_repos_statuses_and_others_update() {
+        let runs = vec![("a".to_string(), run("SHOP-142")), ("b".to_string(), run("SHOP-133"))];
+        let old = |n| MrStatus { number: n, url: "u".into(), state: MrState::Open, draft: false, ci: Ci::Green, pipeline_url: None };
+        let mut remote = Remote {
+            mrs: HashMap::from([(mr_key("SHOP", "SHOP-142"), old(87)), (mr_key("SHOP", "SHOP-133"), old(71))]),
+            ..Remote::default()
+        };
+        let f = Fake::new(|d, _, a| match a[0] {
+            "api" => Ok(r#"{"login":"al"}"#.into()),
+            _ if d.ends_with("SHOP-142") => Err("gh: HTTP 502".into()),
+            _ => Ok(list(&[pr(71, "MERGED", "fix/SHOP-133-rounding")])),
+        });
+        fetch_forge(&f, &two_repos(), &runs, &mut remote, now());
+        assert_eq!(mr(&remote, "SHOP-142"), Some((87, MrState::Open, Ci::Green)));
+        assert_eq!(mr(&remote, "SHOP-133"), Some((71, MrState::Merged, Ci::None)));
+        let s = &remote.forge_state;
+        assert_eq!((s.ok, s.error.as_deref()), (false, Some("gh: HTTP 502")));
+    }
+
+    #[test]
+    fn tracker_ticket_takes_the_first_repo_with_its_mr_and_runs_stay_in_their_repo() {
+        let runs = vec![("a".to_string(), run("SHOP-142"))];
+        let mut remote = Remote { jira: tickets(&["SHOP-150".into()], StatusCategory::InProgress), ..Remote::default() };
+        let f = Fake::new(|d, _, a| Ok(match a[0] {
+            "api" => r#"{"login":"al"}"#.into(),
+            _ if d.ends_with("SHOP-142") => list(&[pr(3, "OPEN", "feat/SHOP-15-x")]),
+            // Same number as run SHOP-142's mr.json, in another repo: not its MR.
+            _ => list(&[pr(9, "OPEN", "feat/SHOP-150-y"), pr(87, "OPEN", "feat/SHOP-142-elsewhere")]),
+        }));
+        fetch_forge(&f, &two_repos(), &runs, &mut remote, now());
+        assert_eq!(mr(&remote, "SHOP-150"), Some((9, MrState::Open, Ci::None)));
+        assert_eq!(remote.mr_repos.get(&mr_key("SHOP", "SHOP-150")).map(String::as_str), Some("b"));
+        assert_eq!(mr(&remote, "SHOP-142"), None);
+    }
+
+    #[test]
+    fn open_github_issue_without_run_gets_its_pr() {
+        let repo = Repo { name: "shop".into(), path: runs_dir(), forge: Some(Forge::Github), tracker: Tracker::Github, jira_project: None, remote: Some("acme/shop".into()) };
+        let projects = vec![ProjectDef { key: "acme/shop".into(), tracker: Tracker::Github, repos: vec![repo] }];
+        let issue = r#"[{"number":12,"title":"t","state":"OPEN","stateReason":null,"assignees":[],"labels":[],"url":"u"}]"#;
+        let f = Fake::new(move |_, _, a| Ok(match (a[0], a[1], a.get(3).copied()) {
+            ("issue", "list", Some("open")) => issue.into(),
+            ("issue", _, _) => "[]".into(),
+            ("repo", _, _) => r#"{"visibility":"PRIVATE"}"#.into(),
+            ("api", _, _) => r#"{"login":"al"}"#.into(),
+            _ => list(&[pr(13, "OPEN", "fix/gh-12-typo")]),
+        }));
+        let mut remote = Remote::default();
+        fetch_forge(&f, &projects, &[], &mut remote, now());
+        assert_eq!(remote.mrs.get(&mr_key("acme/shop", "GH-12")).map(|m| m.number), Some(13));
     }
 
     #[test]

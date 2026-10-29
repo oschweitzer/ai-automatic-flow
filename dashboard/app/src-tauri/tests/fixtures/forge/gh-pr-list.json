@@ -1,1 +1,34 @@
-[{"headRefName":"feat/other","number":10},{"headRefName":"feat/SHOP-142-tva","number":143}]
+[
+  {"headRefName":"feat/SHOP-150-draft","isDraft":true,"number":150,"state":"OPEN","statusCheckRollup":[],"url":"https://github.com/acme/shop/pull/150"},
+  {"headRefName":"feat/SHOP-149-fail","isDraft":false,"number":149,"state":"OPEN","statusCheckRollup":[
+    {"__typename":"StatusContext","context":"ci/lint","startedAt":"2026-10-28T10:00:00Z","state":"SUCCESS","targetUrl":"https://ci.example.com/lint/1"},
+    {"__typename":"CheckRun","completedAt":"2026-10-28T10:05:00Z","conclusion":"FAILURE","detailsUrl":"https://github.com/acme/shop/actions/runs/1/job/2","name":"test","startedAt":"2026-10-28T10:00:00Z","status":"COMPLETED","workflowName":"CI"}
+  ],"url":"https://github.com/acme/shop/pull/149"},
+  {"headRefName":"feat/SHOP-148-error","isDraft":false,"number":148,"state":"OPEN","statusCheckRollup":[
+    {"__typename":"StatusContext","context":"ci/build","startedAt":"2026-10-28T10:00:00Z","state":"ERROR","targetUrl":"https://ci.example.com/build/3"}
+  ],"url":"https://github.com/acme/shop/pull/148"},
+  {"headRefName":"feat/SHOP-147-running","isDraft":false,"number":147,"state":"OPEN","statusCheckRollup":[
+    {"__typename":"CheckRun","completedAt":"0001-01-01T00:00:00Z","conclusion":"","detailsUrl":"https://github.com/acme/shop/actions/runs/4/job/5","name":"test","startedAt":"2026-10-28T10:00:00Z","status":"IN_PROGRESS","workflowName":"CI"},
+    {"__typename":"CheckRun","completedAt":"2026-10-28T10:02:00Z","conclusion":"SUCCESS","detailsUrl":"https://github.com/acme/shop/actions/runs/4/job/6","name":"lint","startedAt":"2026-10-28T10:00:00Z","status":"COMPLETED","workflowName":"CI"}
+  ],"url":"https://github.com/acme/shop/pull/147"},
+  {"headRefName":"feat/SHOP-146-expected","isDraft":false,"number":146,"state":"OPEN","statusCheckRollup":[
+    {"__typename":"StatusContext","context":"ci/deploy","startedAt":"2026-10-28T10:00:00Z","state":"EXPECTED","targetUrl":""}
+  ],"url":"https://github.com/acme/shop/pull/146"},
+  {"headRefName":"feat/SHOP-145-green","isDraft":false,"number":145,"state":"MERGED","statusCheckRollup":[
+    {"__typename":"CheckRun","completedAt":"2026-10-27T10:02:00Z","conclusion":"SUCCESS","detailsUrl":"https://github.com/acme/shop/actions/runs/7/job/8","name":"test","startedAt":"2026-10-27T10:00:00Z","status":"COMPLETED","workflowName":"CI"},
+    {"__typename":"CheckRun","completedAt":"2026-10-27T10:02:00Z","conclusion":"NEUTRAL","detailsUrl":"https://github.com/acme/shop/actions/runs/7/job/9","name":"audit","startedAt":"2026-10-27T10:00:00Z","status":"COMPLETED","workflowName":"CI"},
+    {"__typename":"CheckRun","completedAt":"2026-10-27T10:02:00Z","conclusion":"SKIPPED","detailsUrl":"https://github.com/acme/shop/actions/runs/7/job/10","name":"deploy","startedAt":"2026-10-27T10:00:00Z","status":"COMPLETED","workflowName":"CI"}
+  ],"url":"https://github.com/acme/shop/pull/145"},
+  {"headRefName":"feat/SHOP-144-timeout","isDraft":false,"number":144,"state":"CLOSED","statusCheckRollup":[
+    {"__typename":"CheckRun","completedAt":"2026-10-26T10:02:00Z","conclusion":"TIMED_OUT","detailsUrl":"https://github.com/acme/shop/actions/runs/11/job/12","name":"test","startedAt":"2026-10-26T10:00:00Z","status":"COMPLETED","workflowName":"CI"}
+  ],"url":"https://github.com/acme/shop/pull/144"},
+  {"headRefName":"feat/SHOP-143-cancelled","isDraft":false,"number":143,"state":"OPEN","statusCheckRollup":[
+    {"__typename":"CheckRun","completedAt":"2026-10-26T10:02:00Z","conclusion":"CANCELLED","detailsUrl":"https://github.com/acme/shop/actions/runs/13/job/14","name":"test","startedAt":"2026-10-26T10:00:00Z","status":"COMPLETED","workflowName":"CI"}
+  ],"url":"https://github.com/acme/shop/pull/143"},
+  {"headRefName":"feat/SHOP-142-action","isDraft":false,"number":142,"state":"OPEN","statusCheckRollup":[
+    {"__typename":"CheckRun","completedAt":"2026-10-26T10:02:00Z","conclusion":"ACTION_REQUIRED","detailsUrl":"https://github.com/acme/shop/actions/runs/15/job/16","name":"test","startedAt":"2026-10-26T10:00:00Z","status":"COMPLETED","workflowName":"CI"}
+  ],"url":"https://github.com/acme/shop/pull/142"},
+  {"headRefName":"feat/SHOP-141-queued","isDraft":false,"number":141,"state":"OPEN","statusCheckRollup":[
+    {"__typename":"CheckRun","completedAt":"0001-01-01T00:00:00Z","conclusion":"","detailsUrl":"https://github.com/acme/shop/actions/runs/17/job/18","name":"test","startedAt":"0001-01-01T00:00:00Z","status":"QUEUED","workflowName":"CI"}
+  ],"url":"https://github.com/acme/shop/pull/141"}
+]
