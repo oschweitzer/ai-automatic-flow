@@ -21,12 +21,27 @@ impl Runner for SystemRunner {
     fn run(&self, dir: &Path, program: &str, args: &[&str]) -> Result<String, String> {
         let mut cmd = Command::new(program);
         cmd.args(args).current_dir(dir);
+        // The app has no console: without this, Windows flashes a console window for every call.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        // Started from Finder or the Dock, the app gets launchd's PATH, which lacks Homebrew's folders.
+        #[cfg(target_os = "macos")]
+        {
+            let mut dirs: Vec<std::path::PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+            dirs.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(std::path::PathBuf::from));
+            if let Ok(path) = std::env::join_paths(dirs) {
+                cmd.env("PATH", path);
+            }
+        }
         let (success, stdout, stderr) = output(cmd, program, CLI_TIMEOUT)?;
         // gh pr checks exits non-zero while checks fail or run, its JSON is still valid.
         if success || (program == "gh" && args.starts_with(&["pr", "checks"]) && !stdout.trim().is_empty()) {
             Ok(stdout)
         } else {
-            Err(format!("{program}: {}", stderr.trim()))
+            Err(format!("{program}: {}", short_err(&stderr)))
         }
     }
 }
@@ -62,15 +77,26 @@ fn output(mut cmd: Command, program: &str, limit: std::time::Duration) -> Result
     Ok((status.success(), out.join().unwrap_or_default(), err.join().unwrap_or_default()))
 }
 
+/// The sidebar shows the error: its first line, at most 200 characters.
+fn short_err(s: &str) -> String { s.trim().lines().next().unwrap_or("").chars().take(200).collect() }
+
 fn json(s: &str) -> Option<Value> { serde_json::from_str(s).ok() }
 
 fn text(v: &Value, k: &str) -> String { v[k].as_str().unwrap_or("").to_string() }
 
-/// First list entry whose branch contains the key, case-insensitive.
+/// True when `branch` holds `key` as a whole key, case-insensitive: "feat/shop-14-fix" holds SHOP-14, "feat/shop-142-x" does not.
+fn has_key(branch: &str, key: &str) -> bool {
+    let (b, k) = (branch.to_lowercase(), key.to_lowercase());
+    b.match_indices(&k).any(|(i, _)| {
+        !b[..i].chars().next_back().is_some_and(char::is_alphanumeric)
+            && !b[i + k.len()..].chars().next().is_some_and(|c| c.is_ascii_digit())
+    })
+}
+
+/// First list entry whose branch holds the key.
 fn find_by_branch(list: &str, branch_field: &str, key: &str) -> Option<Value> {
-    let key = key.to_lowercase();
     json(list)?.as_array()?.iter()
-        .find(|e| e[branch_field].as_str().is_some_and(|b| b.to_lowercase().contains(&key)))
+        .find(|e| e[branch_field].as_str().is_some_and(|b| has_key(b, key)))
         .cloned()
 }
 
@@ -301,6 +327,31 @@ mod tests {
             "glab api --method GET projects/:id/merge_requests -f state=all -f search=shop-142 -f per_page=20",
             "glab api projects/:id/merge_requests/7",
         ]);
+    }
+
+    #[test]
+    fn key_needs_a_boundary_in_the_branch() {
+        let gh = Fake::new(|_, a| Ok(match (a[0], a[1]) {
+            ("pr", "list") => r#"[{"headRefName":"feat/shop-142-x","number":5},{"headRefName":"feat/SHOP-14-fix","number":6}]"#.into(),
+            _ => fx("gh-pr-view.json"),
+        }));
+        mr_status(&gh, &repo(Some(Forge::Github)), None, "SHOP-14").unwrap();
+        assert_eq!(gh.calls()[1], "gh pr view 6 --json number,url,state,isDraft");
+        let gh = Fake::new(|_, _| Ok(r#"[{"headRefName":"feat/shop-142-x","number":5},{"headRefName":"feat/xshop-14","number":7}]"#.into()));
+        assert!(mr_status(&gh, &repo(Some(Forge::Github)), None, "SHOP-14").unwrap().is_none());
+        let gl = Fake::new(|_, a| Ok(if a.last() == Some(&"projects/:id/merge_requests/6") { fx("glab-mr.json") }
+            else { r#"[{"iid":5,"source_branch":"feat/shop-142-x"},{"iid":6,"source_branch":"feat/SHOP-14-fix"}]"#.into() }));
+        mr_status(&gl, &repo(Some(Forge::Gitlab)), None, "SHOP-14").unwrap();
+        assert_eq!(gl.calls()[1], "glab api projects/:id/merge_requests/6");
+        let gl = Fake::new(|_, _| Ok(r#"[{"iid":5,"source_branch":"feat/shop-142-x"}]"#.into()));
+        assert!(mr_status(&gl, &repo(Some(Forge::Gitlab)), None, "SHOP-14").unwrap().is_none());
+    }
+
+    #[test]
+    fn cli_error_keeps_first_line_and_200_chars() {
+        assert_eq!(short_err("  boom\nsecond line\n"), "boom");
+        assert_eq!(short_err(&"x".repeat(500)).chars().count(), 200);
+        assert_eq!(short_err(&"é".repeat(300)).chars().count(), 200);
     }
 
     #[test]
