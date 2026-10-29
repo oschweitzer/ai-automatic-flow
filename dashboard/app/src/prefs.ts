@@ -20,9 +20,18 @@ export function loadPrefs(project: string, p: ProjectView): ProjectPrefs {
   } catch { /* broken storage or JSON: defaults */ }
   const list = <T,>(v: unknown, ok: (x: unknown) => x is T, fallback: T[]) =>
     Array.isArray(v) && v.every(ok) ? v : fallback;
+  // A saved sprint that is gone (closed) is dropped. None left means the default, keeping the backlog if it was chosen.
+  const isSprint = (x: unknown): x is number | 'backlog' => typeof x === 'number' || x === 'backlog';
+  const saved = Array.isArray(raw.sprints) && raw.sprints.every(isSprint) ? raw.sprints : null;
+  let sprints = d.sprints;
+  if (saved) {
+    const live = saved.filter((s) => s === 'backlog' || p.sprints.some((x) => x.id === s));
+    const ids = live.filter((s) => s !== 'backlog');
+    sprints = ids.length || !p.hasSprints ? live : [...d.sprints, ...live];
+  }
   return {
     people: list(raw.people, (x): x is string => typeof x === 'string', d.people),
-    sprints: list(raw.sprints, (x): x is number | 'backlog' => typeof x === 'number' || x === 'backlog', d.sprints),
+    sprints,
     open: list(raw.open, (x): x is SectionKey => SECTIONS.includes(x as SectionKey), d.open),
   };
 }

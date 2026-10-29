@@ -8,8 +8,8 @@ export function useSnapshot(): { snapshot: Snapshot | null; refresh(): Promise<v
   useEffect(() => {
     let off: (() => void) | undefined;
     let gone = false;
-    listen<Snapshot>('snapshot', (e) => setSnapshot(e.payload)).then((f) => (gone ? f() : (off = f)));
-    invoke<Snapshot>('get_snapshot').then((s) => !gone && setSnapshot((cur) => cur ?? s));
+    listen<Snapshot>('snapshot', (e) => setSnapshot(e.payload)).then((f) => (gone ? f() : (off = f))).catch(console.error);
+    invoke<Snapshot>('get_snapshot').then((s) => !gone && setSnapshot((cur) => cur ?? s)).catch(console.error);
     return () => { gone = true; off?.(); };
   }, []);
   const refresh = useCallback(() => invoke<void>('refresh'), []);

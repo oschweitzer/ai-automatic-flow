@@ -38,6 +38,16 @@ describe('visible', () => {
     expect(keys(visible(ts, shop, prefs({ people: ['bob'] }), me, ''))).toEqual(['A-2', 'A-3']);
   });
 
+  it('search_ignores_accents_and_other_projects', () => {
+    const ts = [tk('SHOP-1', { summary: 'Publier une étape', localRun: true }), tk('PAY-1', { project: 'PAY', summary: 'étape', localRun: true })];
+    expect(keys(visible(ts, shop, prefs(), me, 'ETAPE'))).toEqual(['SHOP-1']);
+  });
+
+  it('two_people_filter', () => {
+    const ts = [tk('A-1', { assignees: [me] }), tk('A-2', { assignees: [bob] }), tk('A-3', { assignees: [{ accountId: 'c', displayName: 'C' }] })];
+    expect(keys(visible(ts, shop, prefs({ people: ['__me__', 'bob'] }), me, ''))).toEqual(['A-1', 'A-2']);
+  });
+
   it('backlog_filter', () => {
     const ts = [tk('B-1', { localRun: true, sprintId: null }), tk('B-2', { localRun: true }), tk('B-3', { localRun: true, sprintId: 9 })];
     expect(keys(visible(ts, shop, prefs(), me, ''))).toEqual(['B-2']);

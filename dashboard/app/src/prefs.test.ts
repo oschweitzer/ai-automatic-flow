@@ -22,6 +22,13 @@ describe('prefs', () => {
     expect(loadPrefs('OTHER', project)).toEqual(d);
   });
 
+  it('closed_sprint_falls_back_to_active', () => {
+    localStorage.setItem('tf.prefs.SHOP', JSON.stringify({ sprints: [3, 'backlog'] }));
+    expect(loadPrefs('SHOP', project).sprints).toEqual([7, 'backlog']);
+    localStorage.setItem('tf.prefs.SHOP', JSON.stringify({ sprints: [3, 8] }));
+    expect(loadPrefs('SHOP', project).sprints).toEqual([8]);
+  });
+
   it('prefs_survive_broken_storage', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });

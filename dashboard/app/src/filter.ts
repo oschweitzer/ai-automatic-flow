@@ -1,9 +1,11 @@
 import type { Person, ProjectView, SectionKey, Ticket } from './types';
 import type { ProjectPrefs } from './prefs';
 
+const fold = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+
 /** Tickets of `project` that pass the person filter, the sprint filter (Jira projects with sprints) and the search. */
 export function visible(tickets: Ticket[], project: ProjectView, prefs: ProjectPrefs, me: Person | null, query: string): Ticket[] {
-  const q = query.trim().toLowerCase();
+  const q = fold(query.trim());
   return tickets.filter((t) => {
     if (t.project !== project.key) return false;
     const mine = t.localRun || (me != null && t.assignees.some((a) => a.accountId === me.accountId));
@@ -16,12 +18,12 @@ export function visible(tickets: Ticket[], project: ProjectView, prefs: ProjectP
       const sprint = t.sprintId == null ? prefs.sprints.includes('backlog') : prefs.sprints.includes(t.sprintId);
       if (!sprint) return false;
     }
-    return !q || t.key.toLowerCase().includes(q) || t.summary.toLowerCase().includes(q);
+    return !q || fold(t.key).includes(q) || fold(t.summary).includes(q);
   });
 }
 
 const time = (t: Ticket) => (t.lastActivity ? Date.parse(t.lastActivity) : 0);
-const natural = new Intl.Collator(undefined, { numeric: true });
+const natural = new Intl.Collator('en', { numeric: true });
 
 /** Waiting on you first, then latest activity, then key in natural order (GH-7 before GH-142). */
 function order(a: Ticket, b: Ticket): number {
