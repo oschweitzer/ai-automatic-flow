@@ -1,0 +1,1 @@
+{"type": "feature", "acceptance": ["valid code lowers the total"], "risk": ["payment"], "ambiguities": [], "size": "medium", "mechanical": false, "decision": "continue"}

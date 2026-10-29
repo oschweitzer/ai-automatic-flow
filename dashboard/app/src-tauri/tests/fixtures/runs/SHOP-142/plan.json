@@ -1,0 +1,1 @@
+{"base": "main", "branch": "feat/SHOP-142-discount-code", "planner": "sonnet", "executor": "sonnet", "files": [{"path": "src/cart/discount.ts", "change": "apply the code"}, {"path": "src/cart/discount.test.ts", "change": "cover it"}], "behaviour": "A valid discount code lowers the cart total, never below zero.", "risk": ["payment"], "open_points": []}

@@ -1,0 +1,10 @@
+{"at":"2026-10-24T09:00:00Z","stage":"triage","event":"start"}
+{"at":"2026-10-24T09:01:00Z","stage":"triage","event":"end","outcome":"continue"}
+{"at":"2026-10-24T09:01:05Z","stage":"plan","event":"start","model":"sonnet"}
+{"at":"2026-10-24T09:05:00Z","stage":"plan","event":"end","outcome":"approved"}
+{"at":"2026-10-24T09:05:05Z","stage":"execute","event":"start","model":"haiku"}
+{"at":"2026-10-24T09:20:00Z","stage":"execute","event":"end","outcome":"passed"}
+{"at":"2026-10-24T09:20:05Z","stage":"open-mr","event":"start"}
+{"at":"2026-10-24T09:20:40Z","stage":"open-mr","event":"end","outcome":"opened"}
+{"at":"2026-10-24T09:20:45Z","stage":"ci-gate","event":"start"}
+{"at":"2026-10-24T09:50:00Z","stage":"ci-gate","event":"end_state","outcome":"escalated_ci","detail":"jobs: unit"}

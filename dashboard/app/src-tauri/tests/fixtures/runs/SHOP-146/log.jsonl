@@ -1,0 +1,5 @@
+{"at":"2026-10-26T10:00:00Z","stage":"triage","event":"start"}
+{"at":"2026-10-26T10:01:00Z","stage":"triage","event":"end","outcome":"continue"}
+{"at":"2026-10-26T10:01:05Z","stage":"plan","event":"start","model":"sonnet"}
+{"at":"2026-10-26T10:05:00Z","stage":"plan","event":"end","outcome":"approved"}
+{"at":"2026-10-26T10:05:05Z","stage":"execute","event":"start","model":"sonnet"}

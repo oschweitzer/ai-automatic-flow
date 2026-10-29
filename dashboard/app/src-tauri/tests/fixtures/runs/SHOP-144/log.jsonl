@@ -1,0 +1,4 @@
+{"at":"2026-10-26T10:30:00Z","stage":"triage","event":"start"}
+{"at":"2026-10-26T10:31:00Z","stage":"triage","event":"end","outcome":"continue"}
+{"at":"2026-10-26T10:31:05Z","stage":"plan","event":"start","model":"opus"}
+{"at":"2026-10-26T10:36:00Z","stage":"plan","event":"waiting","on":"developer"}
