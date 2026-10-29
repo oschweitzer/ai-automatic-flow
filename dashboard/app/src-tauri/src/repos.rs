@@ -313,4 +313,53 @@ mod tests {
         fs::write(wt.join(".git"), "gitdir: /x/shop/.git/worktrees/SHOP-1\n").unwrap();
         assert!(discover(&[t.path().to_path_buf()]).is_empty());
     }
+
+    #[test]
+    fn github_tracker_without_usable_origin_is_listed_by_folder_name() {
+        let t = tempfile::tempdir().unwrap();
+        let gh = "---\ntracker: github\nforge: github\n---\n";
+        let a = t.path().join("onlab");
+        profile(&a, gh);
+        fs::create_dir_all(a.join(".git")).unwrap();
+        fs::write(a.join(".git").join("config"), "[remote \"origin\"]\n\turl = https://gitlab.com/acme/x.git\n").unwrap();
+        let b = t.path().join("noorigin");
+        profile(&b, gh);
+        fs::create_dir_all(b.join(".git")).unwrap();
+        fs::write(b.join(".git").join("config"), "[core]\n\tbare = false\n").unwrap();
+        profile(&t.path().join("noconfig"), gh);
+        let repos = discover(&[t.path().to_path_buf()]);
+        assert_eq!(repos.len(), 3);
+        assert!(repos.iter().all(|r| r.remote.is_none()));
+        let keys: Vec<String> = group(repos).into_iter().map(|p| p.key).collect();
+        assert_eq!(keys, ["noconfig", "noorigin", "onlab"]);
+    }
+
+    #[test]
+    fn jira_repo_without_project_is_keyed_by_uppercased_folder() {
+        let t = tempfile::tempdir().unwrap();
+        profile(&t.path().join("my-shop"), "---\nforge: github\n---\n");
+        let p = group(discover(&[t.path().to_path_buf()]));
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0].key, "MY-SHOP");
+    }
+
+    #[test]
+    fn depth_three_is_found_depth_four_is_not() {
+        let t = tempfile::tempdir().unwrap();
+        profile(&t.path().join("a").join("b").join("c"), "---\n---\n");
+        profile(&t.path().join("a").join("b").join("c2").join("d"), "---\n---\n");
+        let repos = discover(&[t.path().to_path_buf()]);
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].name, "c");
+    }
+
+    #[test]
+    fn does_not_descend_below_a_profile() {
+        let t = tempfile::tempdir().unwrap();
+        profile(&t.path().join("outer"), "---\n---\n");
+        profile(&t.path().join("outer").join("inner"), "---\n---\n");
+        let repos = discover(&[t.path().to_path_buf()]);
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].name, "outer");
+    }
 }
