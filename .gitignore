@@ -1,2 +1,5 @@
 .idea/
 .ticket-flow/
+dashboard/app/node_modules/
+dashboard/app/dist/
+dashboard/app/src-tauri/target/

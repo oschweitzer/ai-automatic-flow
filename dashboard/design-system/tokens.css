@@ -44,8 +44,8 @@
   --radius-lg: 18px;
   --radius-pill: 999px;
   --shadow-panel: 0 18px 40px rgba(0, 0, 0, 0.45);
-  --font-sans: Geist, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --font-sans: "Geist Variable", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
 }
 .page-title { font-family: var(--font-sans); font-size: 40px; line-height: 1; font-weight: 300; letter-spacing: -0.02em; }
 .panel-title { font-family: var(--font-sans); font-size: 26px; line-height: 1.15; font-weight: 300; letter-spacing: -0.01em; }

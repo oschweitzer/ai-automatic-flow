@@ -10,7 +10,7 @@ The visual rules for the dashboard. The browsable version, with live component p
 | `components/index.d.ts` | The props of each component. The React components still have to be written in the app from these types. |
 | `components/<Name>.md` | When and how to use each component. |
 
-Fonts are Geist and Geist Mono. `components.css` loads them from Google Fonts for now. The desktop app should ship the font files instead, so it works offline.
+Fonts are Geist and Geist Mono. The app ships them from the `@fontsource-variable/geist` and `@fontsource-variable/geist-mono` npm packages, so it works offline. The families are named `Geist Variable` and `Geist Mono Variable` in the tokens.
 
 Ticket Flow Dashboard is a desktop app where each developer follows the tickets the ticket-flow plugin carries from Jira to a merge request. It is a working screen, read many times a day: what waits on me, where each AI run stands, what the client owes us. The system is dark only, quiet, with one lavender accent and colour reserved for state.
 
