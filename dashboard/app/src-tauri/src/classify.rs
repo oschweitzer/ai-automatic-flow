@@ -124,6 +124,7 @@ pub fn classify(run: Option<&RunState>, ticket: Option<&TrackerTicket>, mr: Opti
                 _ => at(Section::Todo, None, Reason::JiraTodo),
             },
             Some(TrackerTicket::Github(_)) => at(Section::Todo, None, Reason::IssueTodo),
+            // Unreachable from the snapshot builder: every ticket has a run or a tracker ticket.
             None => at(Section::Todo, None, Reason::JiraTodo),
         };
     };
@@ -259,6 +260,48 @@ mod tests {
         assert_eq!(go(&fresh).stale_minutes, None);
         let not_start = RunState { last_is_start: false, ..r };
         assert_eq!(go(&not_start).stale_minutes, None);
+        let full = go(&RunState { last_is_start: true, last_at: now() - Duration::minutes(45), ..run() });
+        assert_eq!((full.section, full.reason), (Section::InProgress, Reason::Running));
+        let edge = RunState { last_is_start: true, last_at: now() - Duration::minutes(30), ..run() };
+        assert_eq!(go(&edge).stale_minutes, Some(30));
+        let future = RunState { last_is_start: true, last_at: now() + Duration::minutes(5), ..run() };
+        assert_eq!(go(&future).stale_minutes, None);
+    }
+
+    #[test]
+    fn merged_and_published_overrides_the_run_table() {
+        let r = RunState { published: true, ..ended("parked_needs_info") };
+        assert_eq!(
+            classify(Some(&r), None, Some(&mr(MrState::Merged)), now()),
+            p(Section::Done, None, Reason::ReadyForQa)
+        );
+        assert_eq!(go(&r), p(Section::Waiting, Some(WaitingOn::Client), Reason::ParkedNeedsInfo));
+    }
+
+    #[test]
+    fn override_precedence() {
+        let closed = mr(MrState::Closed);
+        let parked = ended("parked_needs_info");
+        assert_eq!(
+            classify(Some(&run()), Some(&jira(StatusCategory::Done)), Some(&closed), now()),
+            p(Section::Done, None, Reason::JiraDone)
+        );
+        assert_eq!(classify(Some(&parked), None, Some(&closed), now()), p(Section::Done, None, Reason::MrClosed));
+        assert_eq!(classify(None, None, Some(&closed), now()), p(Section::Done, None, Reason::MrClosed));
+        assert_eq!(
+            classify(None, Some(&issue(IssueState::NotPlanned, false)), Some(&closed), now()),
+            p(Section::Done, None, Reason::IssueNotPlanned)
+        );
+    }
+
+    #[test]
+    fn placement_serialises_with_expected_keys() {
+        let a = serde_json::to_string(&p(Section::InProgress, None, Reason::PlanToApprove)).unwrap();
+        assert!(a.contains("\"section\":\"inProgress\""), "{a}");
+        assert!(a.contains("\"reason\":\"plan_to_approve\""), "{a}");
+        assert!(a.contains("\"staleMinutes\":null"), "{a}");
+        let b = serde_json::to_string(&p(Section::Waiting, Some(WaitingOn::You), Reason::IssueNotPlanned)).unwrap();
+        assert!(b.contains("\"waitingOn\":\"you\"") && b.contains("\"reason\":\"issue_not_planned\""), "{b}");
     }
 
     #[test]
