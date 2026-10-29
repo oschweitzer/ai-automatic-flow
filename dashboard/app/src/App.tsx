@@ -24,6 +24,8 @@ export default function App() {
       .then((s) => { setSettings(s); if (!s.roots.length) setView({ kind: 'settings' }); });
   }, []);
 
+  useEffect(() => { if (settings) document.documentElement.lang = settings.language; }, [settings]);
+
   if (!settings) return null;
   const lang = settings.language;
   const project = view.kind === 'project' ? snapshot?.projects.find((p) => p.key === view.key) : undefined;

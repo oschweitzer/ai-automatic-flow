@@ -104,6 +104,15 @@ describe('screens', () => {
     expect(nav.textContent).toContain('1');
   });
 
+  it('stale_flag_uses_age_units', async () => {
+    const s = fixture();
+    s.tickets[0].placement.staleMinutes = 3 * 24 * 60;
+    await renderApp(s, settingsView({ language: 'en' }));
+    openProject(/^SHOP/);
+    expect(screen.getByRole('img', { name: /no news for 3 d/ })).toBeTruthy();
+    expect(document.documentElement.lang).toBe('en');
+  });
+
   it('project_default_filter_is_me', async () => {
     await renderApp();
     openProject(/^SHOP/);
@@ -114,8 +123,9 @@ describe('screens', () => {
     expect(screen.getByText('SHOP-142')).toBeTruthy();
     expect(screen.queryByText('SHOP-146')).toBeNull();
     expect(screen.queryByText('SHOP-150')).toBeNull();
-    // Stale run: flag in the stage caption.
-    expect(screen.getByLabelText('ci-gate 5/8, failed').textContent).toContain('sans nouvelle depuis 45 min');
+    // Stale run: the flag is in the stage caption and in the track's accessible name, in the app's language.
+    const track = screen.getByRole('img', { name: 'ci-gate · 5/8 · sans nouvelle depuis 45 min · en échec' });
+    expect(track.textContent).toContain('sans nouvelle depuis 45 min');
     // Search filters the visible list.
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'panier' } });
     expect(screen.queryByText('SHOP-142')).toBeNull();

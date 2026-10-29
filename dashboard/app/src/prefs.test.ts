@@ -54,7 +54,7 @@ describe('i18n', () => {
   it('t_falls_back_to_key', () => {
     expect(t('fr', 'nope')).toBe('nope');
     expect(t('en', 'nope', { n: 1 })).toBe('nope');
-    expect(t('fr', 'stale', { n: 45 })).toBe('sans nouvelle depuis 45 min');
+    expect(t('fr', 'stale', { n: '45 min' })).toBe('sans nouvelle depuis 45 min');
     expect(t('en', 'public')).toBe('public');
   });
 

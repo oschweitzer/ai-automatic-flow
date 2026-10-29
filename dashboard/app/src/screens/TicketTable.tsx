@@ -2,7 +2,7 @@ import type { MouseEvent, KeyboardEvent } from 'react';
 import { StageTrack, StatusPill, type Tone } from '../ui';
 import { t, type Lang } from '../i18n';
 import { ticketId, type Person, type ProjectView, type Ticket } from '../types';
-import { mrText, reasonText, short } from './util';
+import { age, mrText, reasonText, short } from './util';
 
 const CI_TONE = { green: 'ok', red: 'bad', running: 'run' } as const;
 
@@ -40,8 +40,9 @@ export function TicketTable({ lang, tickets, me, project, selected, onSelect }: 
           const stale = tk.placement.staleMinutes;
           const detail = [
             tk.track && `${tk.track.current}/${tk.track.total}`,
-            stale != null ? t(lang, 'stale', { n: stale }) : tk.placement.reason !== 'running' && reasonText(lang, tk, me),
+            stale != null ? t(lang, 'stale', { n: age(Date.now() - stale * 60_000, lang) }) : tk.placement.reason !== 'running' && reasonText(lang, tk, me),
           ].filter(Boolean).join(' · ');
+          const trackLabel = [tk.track?.stage, detail, tk.track?.failed && t(lang, 'track_failed')].filter(Boolean).join(' · ');
           return (
             <tr key={ticketId(tk)} className="tf-clickable" tabIndex={0} aria-current={selected === ticketId(tk) ? 'true' : undefined}
               onClick={pick(tk)} onKeyDown={pick(tk)}>
@@ -51,7 +52,7 @@ export function TicketTable({ lang, tickets, me, project, selected, onSelect }: 
               </td>
               <td>
                 {tk.localRun && tk.track && tk.placement.section === 'inProgress'
-                  ? <StageTrack current={tk.track.current} total={tk.track.total} stage={tk.track.stage} failed={tk.track.failed} detail={detail} />
+                  ? <StageTrack current={tk.track.current} total={tk.track.total} stage={tk.track.stage} failed={tk.track.failed} detail={detail} label={trackLabel} />
                   : <StatusPill tone={tone(tk)}>{reasonText(lang, tk, me)}</StatusPill>}
               </td>
               <td>
