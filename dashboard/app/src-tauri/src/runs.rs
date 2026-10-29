@@ -244,18 +244,25 @@ mod tests {
 
     #[test]
     fn start_after_end_state_reopens() {
-        let t = std::env::temp_dir().join(format!("runs-reopen-{}", std::process::id()));
-        std::fs::create_dir_all(&t).unwrap();
+        let t = tempfile::tempdir().unwrap();
         std::fs::write(
-            t.join("log.jsonl"),
+            t.path().join("log.jsonl"),
             "{\"at\":\"2026-10-26T09:00:00Z\",\"stage\":\"triage\",\"event\":\"start\"}\n\
              {\"at\":\"2026-10-26T09:01:00Z\",\"stage\":\"triage\",\"event\":\"end_state\",\"outcome\":\"parked_needs_info\"}\n\
+             {\"at\":\"2026-10-26T09:02:00Z\",\"stage\":\"handover\",\"event\":\"published\"}\n\
              {\"at\":\"2026-10-26T12:00:00Z\",\"stage\":\"triage\",\"event\":\"start\"}\n",
         )
         .unwrap();
-        let r = read_run(&t).unwrap();
-        std::fs::remove_dir_all(&t).ok();
+        let r = read_run(t.path()).unwrap();
         assert_eq!(r.end_state, None);
+        assert!(!r.published);
+    }
+
+    #[test]
+    fn only_a_cut_line_gives_none() {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::write(t.path().join("log.jsonl"), "{\"at\":\"2026-10-26T11:00:00Z\",\"stage\":\"exe").unwrap();
+        assert!(read_run(t.path()).is_none());
     }
 
     #[test]
@@ -272,16 +279,24 @@ mod tests {
         assert_eq!(steps(&fx("SHOP-146"), false)[2].state, StepState::Now);
     }
 
+    fn copy_dir(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for e in std::fs::read_dir(from).unwrap() {
+            let e = e.unwrap();
+            let target = to.join(e.file_name());
+            if e.file_type().unwrap().is_dir() {
+                copy_dir(&e.path(), &target);
+            } else {
+                std::fs::copy(e.path(), target).unwrap();
+            }
+        }
+    }
+
     #[test]
     fn read_runs_lists_every_folder() {
-        let repo = std::env::temp_dir().join(format!("runs-repo-{}", std::process::id()));
-        let runs = repo.join(".ticket-flow/runs");
-        std::fs::create_dir_all(runs.parent().unwrap()).unwrap();
-        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runs");
-        std::process::Command::new("cp").arg("-r").arg(&src).arg(&runs).status().unwrap();
-        let n = read_runs(&repo).len();
-        std::fs::remove_dir_all(&repo).ok();
-        assert_eq!(n, 6);
+        let repo = tempfile::tempdir().unwrap();
+        copy_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runs"), &repo.path().join(".ticket-flow/runs"));
+        assert_eq!(read_runs(repo.path()).len(), 6);
     }
 
     #[test]
