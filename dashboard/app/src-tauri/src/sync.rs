@@ -86,7 +86,8 @@ pub async fn rescan(app: &AppHandle) {
     let st = app.state::<AppState>();
     let _one = st.scanning.lock().await;
     let used = st.inner.lock().await.settings.roots.clone();
-    let roots: Vec<PathBuf> = used.iter().map(PathBuf::from).collect();
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from);
+    let roots: Vec<PathBuf> = used.iter().map(|r| repos::expand_home(r, home.as_deref())).collect();
     let Some((projects, runs)) = blocking(move || {
         let projects = repos::group(repos::discover(&roots));
         let runs = read_all(&projects);

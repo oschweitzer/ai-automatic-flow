@@ -159,6 +159,15 @@ fn walk(dir: &Path, depth: u32, out: &mut Vec<Repo>) {
     }
 }
 
+/// A root typed as `~` or `~/work` (`~\work` on Windows) starts at `home`. Other roots are kept as typed.
+pub fn expand_home(root: &str, home: Option<&Path>) -> PathBuf {
+    match (home, root.strip_prefix('~')) {
+        (Some(h), Some("")) => h.to_path_buf(),
+        (Some(h), Some(rest)) if rest.starts_with(['/', '\\']) => h.join(&rest[1..]),
+        _ => PathBuf::from(root),
+    }
+}
+
 /// Repositories with a profile, up to depth 3 below each root.
 pub fn discover(roots: &[PathBuf]) -> Vec<Repo> {
     let mut out = Vec::new();
@@ -232,6 +241,17 @@ mod tests {
         let repos = discover(&[t.path().to_path_buf()]);
         assert_eq!(repos.len(), 1);
         assert_eq!(repos[0].name, "a");
+    }
+
+    #[test]
+    fn root_tilde_is_the_home_folder() {
+        let home = Path::new("/home/al");
+        assert_eq!(expand_home("~/work", Some(home)), home.join("work"));
+        assert_eq!(expand_home("~\\work", Some(home)), home.join("work"));
+        assert_eq!(expand_home("~", Some(home)), home.to_path_buf());
+        assert_eq!(expand_home("/srv/~x", Some(home)), PathBuf::from("/srv/~x"));
+        assert_eq!(expand_home("~bob/x", Some(home)), PathBuf::from("~bob/x"));
+        assert_eq!(expand_home("~/work", None), PathBuf::from("~/work"));
     }
 
     #[test]
