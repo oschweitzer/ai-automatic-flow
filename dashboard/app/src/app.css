@@ -1,0 +1,94 @@
+/* App layout. Every value comes from tokens.css; component looks live in components.css. */
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+h1, h2, h3, h6, p { margin: 0; }
+
+.app { display: grid; grid-template-columns: 248px minmax(0, 1fr); height: 100vh; }
+
+/* Sidebar */
+.rail { display: flex; flex-direction: column; gap: var(--space-14); min-height: 0; overflow-y: auto; padding: var(--space-20) var(--space-14); background: var(--rail); border-right: 1px solid var(--line); }
+.brand { display: flex; align-items: baseline; gap: var(--space-8); padding: var(--space-4) var(--space-8) var(--space-18); border-bottom: 1px solid var(--line); }
+.brand b { font-weight: 500; font-size: 16px; }
+.brand small { color: var(--text-3); font-size: 12px; }
+.rail-nav { display: flex; flex-direction: column; gap: 2px; }
+.rail-nav h6 { padding: var(--space-8) var(--space-10); font: 500 12px/1.3 var(--font-sans); color: var(--text-3); }
+.rail-nav .tf-nav > span { min-width: 0; overflow-wrap: anywhere; }
+.rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: var(--space-4); padding-top: var(--space-12); border-top: 1px solid var(--line); }
+.sync { display: flex; align-items: center; gap: var(--space-8); padding: var(--space-4) var(--space-10); font-size: 12px; color: var(--text-3); }
+.sync > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sync-bad { align-items: flex-start; color: var(--text-2); }
+.sync-bad .tf-icon { color: var(--bad); }
+.icon-btn { display: inline-grid; place-items: center; padding: var(--space-6); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-2); cursor: pointer; }
+.icon-btn:hover { color: var(--text); background: var(--surface-2); }
+
+/* Main column */
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.screen { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--space-14); padding: var(--space-28); }
+.screen-head { display: flex; flex-direction: column; gap: var(--space-6); padding-bottom: var(--space-8); overflow-wrap: anywhere; }
+
+/* Top bar: wraps rather than overflowing at the 1100 px minimum width */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-14); padding: var(--space-14) var(--space-28); border-bottom: 1px solid var(--line); }
+.top-group { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); }
+.top-group + .top-group { padding-left: var(--space-14); border-left: 1px solid var(--line-2); }
+.search { margin-left: auto; display: flex; align-items: center; gap: var(--space-8); width: 230px; padding: var(--space-6) var(--space-12); border: 1px solid var(--control-border); border-radius: var(--radius-nav); color: var(--text-3); }
+.search:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.search input { flex: 1; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font: 400 13px/1.3 var(--font-sans); }
+.search input:focus-visible { outline: none; }
+.search input::placeholder { color: var(--text-3); }
+
+.banner { display: flex; align-items: flex-start; gap: var(--space-10); padding: var(--space-12) var(--space-18); background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius-md); color: var(--text-2); }
+.banner .tf-icon { color: var(--you); margin-top: 2px; }
+.banner strong { color: var(--text); font-weight: 500; }
+
+/* Project: list column and 340 px side column */
+.project-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--space-22); align-items: start; }
+.list, .side { display: flex; flex-direction: column; gap: var(--space-14); min-width: 0; }
+
+/* Tables. Overview: the project column takes the room left and truncates, counts never wrap.
+   Tickets: fixed layout, so at 1100 px the ticket column truncates and pills wrap inside their column. */
+.tf-section tr.tf-clickable:focus-visible, .tf-section > summary:focus-visible { outline-offset: -2px; } /* inside the section, which clips */
+.cell-main { width: 100%; max-width: 0; }
+.ellipsis { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nowrap { white-space: nowrap; }
+.ticket-table { table-layout: fixed; }
+.ticket-table .col-progress { width: 40%; }
+.ticket-table .col-mr { width: 24%; }
+.ticket-table th, .ticket-table td { padding-inline: var(--space-12); overflow-wrap: anywhere; }
+.ticket-table .tf-track { min-width: 0; }
+.ticket-table .tf-pill { white-space: normal; }
+.mr { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); }
+.count.zero { color: var(--text-3); }
+.count.you { color: var(--you); }
+.count.client { color: var(--client); }
+
+/* Side column: sprint summary */
+.mini { padding: var(--space-14) var(--space-18); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.mini h2 { padding-bottom: var(--space-10); font: 500 13px/1.4 var(--font-sans); color: var(--text-2); overflow-wrap: anywhere; }
+.mini-line { display: flex; justify-content: space-between; padding: var(--space-6) 0; border-top: 1px solid var(--line); font-size: 13px; }
+
+/* Detail panel: replaces the side column */
+.panel { display: flex; flex-direction: column; gap: var(--space-10); padding: var(--space-20); background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius-lg); box-shadow: var(--shadow-panel); overflow-wrap: anywhere; }
+.panel-close { align-self: flex-end; margin-bottom: calc(-1 * var(--space-28)); }
+.panel-meta { color: var(--text-3); font-size: 12.5px; }
+.panel h3 { padding-top: var(--space-10); font: 500 12px/1.3 var(--font-sans); color: var(--text-3); }
+.tags { display: flex; flex-wrap: wrap; gap: var(--space-6); }
+.tags .tf-pill { white-space: normal; }
+.plan { display: flex; flex-direction: column; gap: var(--space-8); padding: var(--space-12) var(--space-14); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); font-size: 13px; color: var(--text-2); }
+.plan ul { margin: 0; padding-left: var(--space-18); }
+.plan code { color: var(--text); background: var(--surface-2); padding: 0 var(--space-4); border-radius: var(--radius-sm); }
+.link { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.links { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8); }
+.links .tf-btn { justify-content: flex-start; padding: var(--space-10) var(--space-12); font-size: 13px; }
+
+/* Settings */
+.settings { display: flex; flex-direction: column; gap: var(--space-18); max-width: 560px; }
+.field { display: flex; flex-direction: column; gap: var(--space-6); }
+.field label { font: 500 12px/1.3 var(--font-sans); color: var(--text-2); }
+.field input, .field textarea, .field select { padding: var(--space-10) var(--space-12); background: var(--surface); color: var(--text); border: 1px solid var(--control-border); border-radius: var(--radius-nav); font: 400 14px/1.4 var(--font-sans); }
+.field textarea { font-family: var(--font-mono); font-size: 12.5px; resize: vertical; }
+.form-error { color: var(--bad); }
+.form-actions { display: flex; gap: var(--space-8); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
