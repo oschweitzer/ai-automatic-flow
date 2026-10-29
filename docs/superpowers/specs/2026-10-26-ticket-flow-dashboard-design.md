@@ -117,7 +117,7 @@ The last meaningful line wins. A `start` after an `end_state` reopens the run.
 | any other run with no end state | En cours | stage track at the last started stage |
 | last line `start` and nothing new for 30 minutes | En cours, flagged | "sans nouvelle depuis 45 min" (the session may have stopped). Waits do not count. |
 
-Two overrides come before the run folder. A Jira status in the Done category, or a merged MR whose client steps are published, puts the ticket in Terminé whatever the log says. A closed, unmerged MR shows "MR fermée" in Terminé.
+Two overrides come before the run folder. A Jira status in the Done category, or a merged MR whose client steps are published, puts the ticket in Terminé whatever the log says. A closed, unmerged MR shows "MR fermée" in Terminé. Decided on 2026-10-29: client steps still to publish outrank the tracker. A run that ended in `ready_for_qa` without a `published` line stays in En attente even when Jira says Done or the issue is closed as completed.
 
 Tickets with no run folder take their section from the Jira status category: To Do goes to À faire, In Progress to En cours, Done to Terminé. They have no track. A colleague's in-progress ticket shows "en cours chez AL", because the dashboard has no cheap way to know whether their flow is running. This replaces the "Run sur le poste de AL" wording of the mockup.
 

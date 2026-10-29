@@ -104,9 +104,11 @@ fn blocked(reason: Reason) -> Placement {
 pub fn classify(run: Option<&RunState>, ticket: Option<&TrackerTicket>, mr: Option<&MrStatus>, now: DateTime<Utc>) -> Placement {
     let done = |reason| at(Section::Done, None, reason);
     // Overrides, in order: ticket closed, merged and published, MR closed.
+    // Client steps still to publish outrank a tracker closed on merge.
+    let to_publish = run.is_some_and(|r| r.end_state.as_deref() == Some("ready_for_qa") && !r.published);
     match ticket {
-        Some(TrackerTicket::Jira(j)) if j.status_category == StatusCategory::Done => return done(Reason::JiraDone),
-        Some(TrackerTicket::Github(g)) if g.state == IssueState::Completed => return done(Reason::IssueDone),
+        Some(TrackerTicket::Jira(j)) if j.status_category == StatusCategory::Done && !to_publish => return done(Reason::JiraDone),
+        Some(TrackerTicket::Github(g)) if g.state == IssueState::Completed && !to_publish => return done(Reason::IssueDone),
         Some(TrackerTicket::Github(g)) if g.state == IssueState::NotPlanned => return done(Reason::IssueNotPlanned),
         _ => {}
     }
@@ -357,6 +359,25 @@ mod tests {
         assert_eq!(
             classify(Some(&r), Some(&jira(StatusCategory::Done)), None, now()),
             p(Section::Done, None, Reason::JiraDone)
+        );
+    }
+
+    #[test]
+    fn client_steps_outrank_a_closed_tracker() {
+        let qa = ended("ready_for_qa");
+        let merged = mr(MrState::Merged);
+        let steps = p(Section::Waiting, Some(WaitingOn::You), Reason::ClientStepsToPublish);
+        assert_eq!(classify(Some(&qa), Some(&jira(StatusCategory::Done)), Some(&merged), now()), steps);
+        assert_eq!(classify(Some(&qa), Some(&issue(IssueState::Completed, false)), Some(&merged), now()), steps);
+        // Once published, or when the issue was dropped, the tracker wins again.
+        let published = RunState { published: true, ..ended("ready_for_qa") };
+        assert_eq!(
+            classify(Some(&published), Some(&jira(StatusCategory::Done)), Some(&merged), now()),
+            p(Section::Done, None, Reason::JiraDone)
+        );
+        assert_eq!(
+            classify(Some(&qa), Some(&issue(IssueState::NotPlanned, false)), Some(&merged), now()),
+            p(Section::Done, None, Reason::IssueNotPlanned)
         );
     }
 
