@@ -1,4 +1,5 @@
 pub mod classify;
+pub mod forge;
 pub mod repos;
 pub mod runs;
 
