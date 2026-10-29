@@ -1,7 +1,9 @@
 pub mod classify;
 pub mod forge;
+pub mod jira;
 pub mod repos;
 pub mod runs;
+pub mod settings;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
