@@ -4,7 +4,7 @@ use crate::jira::JiraClient;
 use crate::repos::{self, ProjectDef, Tracker};
 use crate::runs::{read_runs, RunState};
 use crate::settings::{self, Settings};
-use crate::snapshot::{issue_key, mr_key, snapshot, Remote, Snapshot, SourceState};
+use crate::snapshot::{issue_key, mr_key, run_of, snapshot, Remote, Snapshot, SourceState};
 use chrono::{DateTime, Utc};
 use notify_debouncer_mini::notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
@@ -31,6 +31,8 @@ pub struct AppState {
     pub inner: tokio::sync::Mutex<Inner>,
     // One remote fetch at a time: each starts from the last stored Remote, so none overwrites a newer one.
     fetching: tokio::sync::Mutex<()>,
+    // One local scan at a time, so an older scan never lands after a newer one.
+    scanning: tokio::sync::Mutex<()>,
     watcher: std::sync::Mutex<Option<(Vec<PathBuf>, Debouncer<RecommendedWatcher>)>>,
 }
 
@@ -43,6 +45,7 @@ impl AppState {
             config_dir,
             inner: tokio::sync::Mutex::new(Inner { settings, projects: vec![], runs: vec![], remote, snapshot }),
             fetching: tokio::sync::Mutex::new(()),
+            scanning: tokio::sync::Mutex::new(()),
             watcher: std::sync::Mutex::new(None),
         }
     }
@@ -81,23 +84,32 @@ async fn blocking<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> 
 /// Rediscovers repositories under the roots, re-reads their runs and re-watches their runs folders.
 pub async fn rescan(app: &AppHandle) {
     let st = app.state::<AppState>();
-    let roots: Vec<PathBuf> = st.inner.lock().await.settings.roots.iter().map(PathBuf::from).collect();
+    let _one = st.scanning.lock().await;
+    let used = st.inner.lock().await.settings.roots.clone();
+    let roots: Vec<PathBuf> = used.iter().map(PathBuf::from).collect();
     let Some((projects, runs)) = blocking(move || {
         let projects = repos::group(repos::discover(&roots));
         let runs = read_all(&projects);
         (projects, runs)
     }).await else { return };
-    watch_runs(app, &st, &projects);
     let snap = {
         let mut i = st.inner.lock().await;
-        (i.projects, i.runs) = (projects, runs);
+        // Settings saved meanwhile: their own rescan follows, this result is for the old roots.
+        if i.settings.roots != used {
+            return;
+        }
+        i.projects = projects.clone();
+        i.runs = runs;
         rebuild(&mut i)
     };
+    watch_runs(app, &st, &projects);
     emit(app, snap);
 }
 
 async fn reload_runs(app: AppHandle) {
     let st = app.state::<AppState>();
+    // Serialised with rescan, so the projects read here are still current when the runs are stored.
+    let _one = st.scanning.lock().await;
     let projects = st.inner.lock().await.projects.clone();
     let Some(runs) = blocking(move || read_all(&projects)).await else { return };
     let snap = {
@@ -222,7 +234,7 @@ pub fn fetch_forge(r: &dyn Runner, projects: &[ProjectDef], runs: &[(String, Run
     for p in projects {
         let mut with_run = HashSet::new();
         for (name, run) in runs {
-            let Some(repo) = p.repos.iter().find(|r| r.name == *name) else { continue };
+            let Some(repo) = p.repos.iter().find(|r| run_of(r, name, run)) else { continue };
             if !with_run.insert(run.key.clone()) { continue } // the snapshot shows the first run of a key
             let k = mr_key(&p.key, &run.key);
             match forge::mr_status(r, repo, run.mr.as_ref(), &run.key) {
@@ -243,21 +255,26 @@ pub fn fetch_forge(r: &dyn Runner, projects: &[ProjectDef], runs: &[(String, Run
         };
         for key in started.iter().filter(|k| !with_run.contains(*k)) {
             let k = mr_key(&p.key, key);
+            let (mut found, mut failed) = (false, false);
             for repo in p.repos.iter().filter(|r| r.forge.is_some()) {
                 match forge::mr_status(r, repo, None, key) {
                     Ok(Some(m)) => {
                         mrs.insert(k.clone(), m);
                         mr_repos.insert(k.clone(), repo.name.clone());
+                        found = true;
                         break;
                     }
                     Ok(None) => {}
                     Err(e) => {
                         errors.push(e);
-                        if let Some(old) = remote.mrs.get(&k) { mrs.insert(k.clone(), old.clone()); }
-                        if let Some(old) = remote.mr_repos.get(&k) { mr_repos.insert(k.clone(), old.clone()); }
-                        break;
+                        failed = true;
                     }
                 }
+            }
+            // A repo that failed may hold the MR: keep the last one known.
+            if !found && failed {
+                if let Some(old) = remote.mrs.get(&k) { mrs.insert(k.clone(), old.clone()); }
+                if let Some(old) = remote.mr_repos.get(&k) { mr_repos.insert(k.clone(), old.clone()); }
             }
         }
     }
@@ -323,7 +340,7 @@ mod tests {
     #[test]
     fn forge_error_keeps_last_data() {
         let now = Utc.with_ymd_and_hms(2026, 10, 28, 12, 0, 0).unwrap();
-        let repo = Repo { name: "shop".into(), path: PathBuf::from("."), forge: Some(Forge::Github), tracker: Tracker::Github, jira_project: None, remote: Some("acme/shop".into()) };
+        let repo = Repo { name: "shop".into(), path: PathBuf::from(env!("CARGO_MANIFEST_DIR")), forge: Some(Forge::Github), tracker: Tracker::Github, jira_project: None, remote: Some("acme/shop".into()) };
         let projects = vec![ProjectDef { key: "acme/shop".into(), tracker: Tracker::Github, repos: vec![repo] }];
         let run = crate::runs::read_run(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runs/SHOP-142")).unwrap();
         let runs = vec![("shop".to_string(), RunState { key: "GH-142".into(), ..run })];
@@ -346,5 +363,27 @@ mod tests {
         let s = &remote.forge_state;
         assert!(s.configured && !s.ok);
         assert_eq!((s.error.as_deref(), s.last_ok_at), (Some("gh: offline"), Some(before)));
+    }
+
+    #[test]
+    fn jira_without_token_keeps_github_issues() {
+        let projects = vec![
+            ProjectDef { key: "SHOP".into(), tracker: Tracker::Jira, repos: vec![] },
+            ProjectDef { key: "acme/shop".into(), tracker: Tracker::Github, repos: vec![] },
+        ];
+        let issue = GithubIssue { number: 1, title: "t".into(), state: IssueState::Open, assignees: vec![], labels: vec![], url: "u".into() };
+        let mut remote = Remote {
+            me_jira: Some(Person { account_id: "a".into(), display_name: "A".into() }),
+            jira: vec![crate::jira::JiraProject { key: "SHOP".into(), sprints: vec![], has_sprints: false, tickets: vec![] }],
+            issues: HashMap::from([("acme/shop".to_string(), vec![issue])]),
+            ..Remote::default()
+        };
+        tauri::async_runtime::block_on(fetch_jira(&mut remote, &Settings::default(), None, &projects));
+        assert!(!remote.jira_state.configured);
+        assert!(remote.jira.is_empty() && remote.me_jira.is_none());
+        assert_eq!(remote.issues["acme/shop"].len(), 1);
+        let s = snapshot(&projects, &[], &remote, Utc::now());
+        assert!(!s.jira.configured);
+        assert_eq!(s.tickets.iter().map(|t| t.key.as_str()).collect::<Vec<_>>(), vec!["GH-1"]);
     }
 }

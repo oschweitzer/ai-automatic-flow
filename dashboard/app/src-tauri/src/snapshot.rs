@@ -1,6 +1,6 @@
 use crate::classify::{classify, Ci, GithubIssue, IssueState, MrStatus, Person, Placement, TrackerTicket};
 use crate::jira::{JiraProject, Sprint};
-use crate::repos::{Forge, ProjectDef, Tracker};
+use crate::repos::{Forge, ProjectDef, Repo, Tracker};
 use crate::runs::{steps, PlanSummary, RunState, StepInfo, StepState, TriageInfo, STAGES};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -60,6 +60,9 @@ pub fn mr_key(project: &str, ticket: &str) -> String { format!("{project}\n{tick
 
 pub fn issue_key(number: u64) -> String { format!("GH-{number}") }
 
+/// Whether a run read from repository `name` belongs to `repo`. Folder names repeat across roots, so the path decides.
+pub fn run_of(repo: &Repo, name: &str, run: &RunState) -> bool { repo.name == name && run.run_dir.starts_with(&repo.path) }
+
 #[allow(clippy::too_many_arguments)] // the signature the plan fixed
 pub fn build(projects: &[ProjectDef], runs: &[(String, RunState)],      // (repo name, run)
              jira: &[JiraProject], issues: &HashMap<String, Vec<GithubIssue>>, // issues by project key
@@ -69,14 +72,13 @@ pub fn build(projects: &[ProjectDef], runs: &[(String, RunState)],      // (repo
     let _ = (me_jira, me_github);
     let mut out = Vec::new();
     for p in projects {
-        let names: Vec<&str> = p.repos.iter().map(|r| r.name.as_str()).collect();
         let trackers: HashMap<String, TrackerTicket> = match p.tracker {
             Tracker::Jira => jira.iter().filter(|j| j.key == p.key).flat_map(|j| &j.tickets)
                 .map(|t| (t.key.clone(), TrackerTicket::Jira(t.clone()))).collect(),
             Tracker::Github => issues.get(&p.key).into_iter().flatten()
                 .map(|i| (issue_key(i.number), TrackerTicket::Github(i.clone()))).collect(),
         };
-        let own: Vec<&(String, RunState)> = runs.iter().filter(|(repo, _)| names.contains(&repo.as_str())).collect();
+        let own: Vec<&(String, RunState)> = runs.iter().filter(|(name, run)| p.repos.iter().any(|r| run_of(r, name, run))).collect();
         let keys: BTreeSet<&String> = trackers.keys().chain(own.iter().map(|(_, r)| &r.key)).collect();
         for key in keys {
             let run = own.iter().find(|(_, r)| &r.key == key).map(|(repo, r)| (repo, r));
@@ -185,11 +187,11 @@ mod tests {
     fn fixture(key: &str) -> PathBuf { Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runs").join(key) }
     fn person(id: &str, name: &str) -> Person { Person { account_id: id.into(), display_name: name.into() } }
     fn repo(name: &str, tracker: Tracker, forge: Option<Forge>) -> Repo {
-        Repo { name: name.into(), path: PathBuf::from(name), forge, tracker, jira_project: None, remote: None }
+        // The fixture runs live below the crate folder, so it stands for the repository.
+        Repo { name: name.into(), path: PathBuf::from(env!("CARGO_MANIFEST_DIR")), forge, tracker, jira_project: None, remote: None }
     }
-    fn shop() -> Vec<ProjectDef> {
-        vec![ProjectDef { key: "SHOP".into(), tracker: Tracker::Jira, repos: vec![repo("front", Tracker::Jira, Some(Forge::Gitlab))] }]
-    }
+    fn project(key: &str, repo: Repo) -> ProjectDef { ProjectDef { key: key.into(), tracker: Tracker::Jira, repos: vec![repo] } }
+    fn shop() -> Vec<ProjectDef> { vec![project("SHOP", repo("front", Tracker::Jira, Some(Forge::Gitlab)))] }
     fn acme() -> Vec<ProjectDef> {
         vec![ProjectDef { key: "acme/shop".into(), tracker: Tracker::Github, repos: vec![repo("shop", Tracker::Github, Some(Forge::Github))] }]
     }
@@ -286,7 +288,8 @@ mod tests {
             let f = f.unwrap();
             std::fs::copy(f.path(), dir.join(f.file_name())).unwrap();
         }
-        let ticket = |runs: &[(String, RunState)]| go(&shop(), runs, &[], &HashMap::new()).remove(0);
+        let shop = vec![project("SHOP", Repo { path: t.path().to_path_buf(), ..repo("front", Tracker::Jira, None) })];
+        let ticket = |runs: &[(String, RunState)]| go(&shop, runs, &[], &HashMap::new()).remove(0);
         let a = ticket(&[("front".into(), read_run(&dir).unwrap())]);
         assert_eq!(a.run_dir.as_deref(), Some(dir.to_string_lossy().as_ref()));
         assert_eq!(a.plan_path.as_deref().map(PathBuf::from), Some(dir.join("plan.json")));
@@ -311,6 +314,19 @@ mod tests {
         assert_eq!(s.projects.len(), 1);
         assert_eq!((s.projects[0].tracker, s.projects[0].has_sprints), (Tracker::Github, false));
         assert_eq!(s.projects[0].repos, vec!["shop".to_string()]);
+    }
+
+    #[test]
+    fn same_repo_name_in_two_roots_keeps_runs_apart() {
+        let at = |root: &str| Repo { path: PathBuf::from(root).join("front"), ..repo("front", Tracker::Jira, None) };
+        let projects = vec![project("PAY", at("b")), project("SHOP", at("a"))];
+        let run = |root: &str, key: &str| {
+            let r = read_run(&fixture("SHOP-146")).unwrap();
+            ("front".to_string(), RunState { key: key.into(), run_dir: PathBuf::from(root).join("front/.ticket-flow/runs").join(key), ..r })
+        };
+        let t = go(&projects, &[run("a", "SHOP-1"), run("b", "PAY-12")], &[], &HashMap::new());
+        let got: Vec<(&str, &str)> = t.iter().map(|t| (t.project.as_str(), t.key.as_str())).collect();
+        assert_eq!(got, vec![("PAY", "PAY-12"), ("SHOP", "SHOP-1")]);
     }
 
     #[test]

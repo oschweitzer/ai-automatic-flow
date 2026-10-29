@@ -46,16 +46,18 @@ async fn get_settings(state: State<'_, AppState>) -> Result<SettingsView, String
 #[tauri::command]
 async fn save_settings(app: AppHandle, settings: Settings, token: Option<String>) -> Result<(), String> {
     let st = app.state::<AppState>();
-    settings::save(&st.config_dir, &settings)?;
-    if let Some(token) = token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty()) {
-        if settings.jira_email.trim().is_empty() {
-            return Err("settings: a Jira email is needed to store the token".into());
-        }
+    let token = token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+    if token.is_some() && settings.jira_email.trim().is_empty() {
+        return Err("settings: a Jira email is needed to store the token".into());
+    }
+    // Keychain first, then disk, then memory: a failure leaves disk and memory as they were.
+    if let Some(token) = token {
         let email = settings.jira_email.clone();
         tauri::async_runtime::spawn_blocking(move || settings::set_token(&email, &token))
             .await
             .map_err(|_| "settings: keychain unavailable".to_string())??;
     }
+    settings::save(&st.config_dir, &settings)?;
     st.inner.lock().await.settings = settings;
     // The dialog does not wait for the network: the result comes as a `snapshot` event.
     let app = app.clone();

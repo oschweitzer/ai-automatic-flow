@@ -3,8 +3,13 @@ use crate::repos::{Forge, Repo};
 use crate::runs::MrRef;
 use chrono::{DateTime, Duration, Utc};
 use serde_json::Value;
+use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::thread::JoinHandle;
+use std::time::Instant;
+
+const CLI_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub trait Runner: Send + Sync {
     fn run(&self, dir: &Path, program: &str, args: &[&str]) -> Result<String, String>;
@@ -14,19 +19,47 @@ pub struct SystemRunner;
 
 impl Runner for SystemRunner {
     fn run(&self, dir: &Path, program: &str, args: &[&str]) -> Result<String, String> {
-        let out = Command::new(program)
-            .args(args)
-            .current_dir(dir)
-            .output()
-            .map_err(|e| format!("{program}: {e}"))?;
-        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+        let mut cmd = Command::new(program);
+        cmd.args(args).current_dir(dir);
+        let (success, stdout, stderr) = output(cmd, program, CLI_TIMEOUT)?;
         // gh pr checks exits non-zero while checks fail or run, its JSON is still valid.
-        if out.status.success() || (program == "gh" && args.starts_with(&["pr", "checks"]) && !stdout.trim().is_empty()) {
+        if success || (program == "gh" && args.starts_with(&["pr", "checks"]) && !stdout.trim().is_empty()) {
             Ok(stdout)
         } else {
-            Err(format!("{program}: {}", String::from_utf8_lossy(&out.stderr).trim()))
+            Err(format!("{program}: {}", stderr.trim()))
         }
     }
+}
+
+fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> JoinHandle<String> {
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut p) = pipe {
+            let _ = p.read_to_end(&mut buf);
+        }
+        String::from_utf8_lossy(&buf).into_owned()
+    })
+}
+
+/// Runs `cmd` like `Command::output`, but kills it after `limit`: a hung CLI must not hold the fetch forever.
+fn output(mut cmd: Command, program: &str, limit: std::time::Duration) -> Result<(bool, String, String), String> {
+    let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .spawn().map_err(|e| format!("{program}: {e}"))?;
+    // Read both pipes while waiting, or a child filling one would block forever.
+    let (out, err) = (drain(child.stdout.take()), drain(child.stderr.take()));
+    let deadline = Instant::now() + limit;
+    let status = loop {
+        match child.try_wait().map_err(|e| format!("{program}: {e}"))? {
+            Some(s) => break s,
+            None if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("{program}: timed out"));
+            }
+            None => std::thread::sleep(std::time::Duration::from_millis(50)),
+        }
+    };
+    Ok((status.success(), out.join().unwrap_or_default(), err.join().unwrap_or_default()))
 }
 
 fn json(s: &str) -> Option<Value> { serde_json::from_str(s).ok() }
@@ -179,6 +212,31 @@ mod tests {
     use super::*;
     use crate::repos::Tracker;
     use std::path::PathBuf;
+
+    // Does nothing in a normal run. The timeout test starts this test binary on it with the variable set.
+    #[test]
+    fn sleeper() {
+        if std::env::var_os("DASHBOARD_TEST_SLEEP").is_some() {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
+    }
+
+    fn self_on_sleeper() -> Command {
+        let mut cmd = Command::new(std::env::current_exe().unwrap());
+        cmd.args(["--exact", "forge::tests::sleeper", "--test-threads=1"]);
+        cmd
+    }
+
+    #[test]
+    fn slow_cli_is_killed_after_the_deadline() {
+        let mut cmd = self_on_sleeper();
+        cmd.env("DASHBOARD_TEST_SLEEP", "1");
+        let start = Instant::now();
+        assert_eq!(output(cmd, "slow", std::time::Duration::from_secs(1)), Err("slow: timed out".to_string()));
+        assert!(start.elapsed() < std::time::Duration::from_secs(10));
+        let (ok, stdout, _) = output(self_on_sleeper(), "fast", std::time::Duration::from_secs(30)).unwrap();
+        assert!(ok && stdout.contains("1 passed"), "{stdout}");
+    }
 
     fn fx(n: &str) -> String {
         std::fs::read_to_string(format!("{}/tests/fixtures/forge/{n}", env!("CARGO_MANIFEST_DIR"))).unwrap()
