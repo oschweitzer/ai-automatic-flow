@@ -85,6 +85,7 @@ pub struct RunState {
     pub triage: Option<TriageInfo>,
     pub plan: Option<PlanSummary>,
     pub summary: Option<String>,
+    pub has_handover: bool,
 }
 
 #[derive(Deserialize)]
@@ -146,6 +147,7 @@ pub fn read_run(dir: &Path) -> Option<RunState> {
         triage: json(dir, "triage.json"),
         plan,
         summary,
+        has_handover: dir.join("handover.md").is_file(),
         lines,
     })
 }

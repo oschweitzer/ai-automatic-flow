@@ -167,7 +167,7 @@ mod tests {
         RunState {
             key: "SHOP-1".into(), run_dir: PathBuf::new(), lines: vec![], stage_index: 3, end_state: None,
             waiting_on: None, published: false, last_at: now(), last_is_start: false, mr: None, triage: None,
-            plan: None, summary: None,
+            plan: None, summary: None, has_handover: false,
         }
     }
     fn ended(e: &str) -> RunState { RunState { end_state: Some(e.into()), ..run() } }
