@@ -1,3 +1,4 @@
+pub mod classify;
 pub mod runs;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
