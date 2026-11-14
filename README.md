@@ -29,3 +29,7 @@ bash plugins/ticket-flow/tests/test-forge.sh
 bash plugins/ticket-flow/tests/test-checks.sh
 claude --plugin-dir /path/to/ai-automatic-flow/plugins/ticket-flow   # from the repository to work on
 ```
+
+## License
+
+Released under the [PolyForm Noncommercial License 1.0.0](LICENSE). You may read, run, modify and share the code for any noncommercial purpose. Any commercial use requires the author's prior agreement.\n
