@@ -35,7 +35,7 @@ Some clients do not use Jira. Their tickets are GitHub issues, in the same repos
 - The profile is read by a simple frontmatter parser (`lib.sh`): flat keys or one level of nesting, one value per line.
 - Agents get file paths, never pasted content. The triager and planner already read `ticket.md`, so they need no change beyond wording, as long as `ticket.md` keeps the same shape.
 - The scripts have offline tests with stubbed CLIs (`tests/test-forge.sh` stubs `glab`). The new commands need the same kind of test, with a stubbed `gh`.
-- The dashboard only reads, calls the forge through `gh` and `glab` with the developer's existing login, and keeps working without a Jira token (dashboard spec, 2026-10-26).
+- The dashboard only reads, calls the forge through `gh` and `glab` with the developer's existing login, and keeps working without Jira (no `acli` login) (dashboard spec, 2026-10-26).
 
 ## Plugin
 
@@ -159,9 +159,9 @@ An issue closed as not planned goes to Terminé with the label "fermée sans sui
 - GitHub projects hide the sprint chips, like a Jira project without a sprint.
 - The detail panel shows the issue state and labels where the Jira version shows the Jira status, and links to the issue where it links to the Jira ticket. A small "public" tag shows when the repository is public, so the developer knows posts there need approval.
 
-### Without a Jira token
+### Without Jira
 
-GitHub projects work fully without a Jira token. The "Jira is not configured" message only concerns the Jira group.
+GitHub projects work fully without Jira (no `acli` login). The "Jira is not configured" message only concerns the Jira group.
 
 ## Build order
 

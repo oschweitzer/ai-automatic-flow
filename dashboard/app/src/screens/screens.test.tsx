@@ -4,14 +4,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { openPath, openUrl } from '@tauri-apps/plugin-opener';
 import App from '../App';
 import { age, reasonText } from './util';
-import type { Person, Snapshot, SettingsView, Ticket } from '../types';
+import type { Person, Snapshot, Settings, Ticket } from '../types';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(() => Promise.resolve(() => {})) }));
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn(async () => {}), openPath: vi.fn(async () => {}) }));
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
-const me: Person = { accountId: 'me', displayName: 'Olivier Schweitzer' };
+const me: Person = { accountId: 'me', displayName: 'Dev One' };
 const alice: Person = { accountId: 'alice', displayName: 'Alice Lambert' };
 const gh: Person = { accountId: 'oschw', displayName: 'oschw' };
 
@@ -58,10 +58,9 @@ function fixture(): Snapshot {
   };
 }
 
-const settingsView = (o: Partial<SettingsView> = {}): SettingsView =>
-  ({ roots: ['/r'], jiraUrl: 'https://x.atlassian.net', jiraEmail: 'o@x.com', language: 'fr', hasToken: true, ...o });
+const settingsView = (o: Partial<Settings> = {}): Settings => ({ roots: ['/r'], language: 'fr', ...o });
 
-function backend(snapshot: Snapshot, settings: SettingsView) {
+function backend(snapshot: Snapshot, settings: Settings) {
   vi.mocked(invoke).mockImplementation(async (cmd: string) => {
     if (cmd === 'get_snapshot') return snapshot;
     if (cmd === 'get_settings') return settings;
@@ -83,13 +82,14 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('screens', () => {
   it('first_launch_opens_settings', async () => {
-    await renderApp(fixture(), settingsView({ roots: [], hasToken: false }));
+    await renderApp(fixture(), settingsView({ roots: [] }));
     expect(screen.getByRole('heading', { name: 'Réglages' })).toBeTruthy();
-    const token = screen.getByLabelText('Jeton d’API Jira') as HTMLInputElement;
-    expect(token.type).toBe('password');
-    expect(token.value).toBe('');
-    expect(screen.queryByText('Jeton enregistré')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull();
+  });
+
+  it('settings_shows_the_acli_login_hint', async () => {
+    await renderApp(fixture(), settingsView({ roots: [] }));
+    expect(screen.getByText('Jira passe par l’Atlassian CLI. Connecte-toi une fois avec « acli jira auth login --web ».')).toBeTruthy();
   });
 
   it('overview_lists_projects_with_counts', async () => {
@@ -196,12 +196,11 @@ describe('screens', () => {
   it('language_switch_changes_copy', async () => {
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: 'Réglages' }));
-    expect(screen.getByText('Jeton enregistré')).toBeTruthy();
     expect((screen.getByLabelText('Dossiers racines') as HTMLTextAreaElement).value).toBe('/r');
     fireEvent.change(screen.getByLabelText('Langue'), { target: { value: 'en' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' })); });
     expect(invoke).toHaveBeenCalledWith('save_settings', {
-      settings: { roots: ['/r'], jiraUrl: 'https://x.atlassian.net', jiraEmail: 'o@x.com', language: 'en' }, token: null,
+      settings: { roots: ['/r'], language: 'en' },
     });
     expect(screen.getByRole('heading', { level: 1, name: 'All projects' })).toBeTruthy();
   });
@@ -261,13 +260,13 @@ describe('screens', () => {
 
   it('settings_load_failure_blocks_save', async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === 'get_settings') throw 'settings: keychain locked';
+      if (cmd === 'get_settings') throw 'settings: unreadable';
       if (cmd === 'get_snapshot') return fixture();
       return undefined;
     });
     render(<App />);
     await act(async () => {});
-    expect(screen.getByRole('alert').textContent).toContain('settings: keychain locked');
+    expect(screen.getByRole('alert').textContent).toContain('settings: unreadable');
     const save = screen.getByRole('button', { name: 'Enregistrer' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     fireEvent.submit(save.closest('form') as HTMLFormElement);

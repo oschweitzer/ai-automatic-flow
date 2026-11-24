@@ -134,15 +134,15 @@ The profile's commands run after the agent finishes, through `checks.sh`. On fai
 
 ### 6. Draft MR
 
-`forge.sh` pushes the branch and opens a draft MR from a template: Jira link, summary, what was tested and what was not. The draft goes up before CI, so CI runs on it and the team can see the work without mistaking it for finished work. The MR link is added to the Jira ticket.
+`forge.sh` pushes the branch and opens a draft MR from a template: Jira link, the problem, the behaviour after the change, the local checks that actually ran and on which commit, what was tested and what was not, and a folded "AI and details" section with the plan's files and risks for the reviewers. The draft goes up before CI, so CI runs on it and the team can see the work without mistaking it for finished work. The MR link is added to the Jira ticket.
 
 ### 7. CI gate
 
-The flow waits for the pipeline with the Monitor tool. On a red pipeline, Sonnet gets the failed job's name and the tail of its log, makes a targeted fix, runs the local checks and pushes. Two fix rounds, then the run ends in `escalated_ci` and the ticket moves to AI blocked.
+The flow waits for the pipeline with the Monitor tool. A manual, skipped or canceled pipeline gave no result: it is neither a success nor a bug, and the run escalates. On a red pipeline, the flow first reads the log and sorts the failure: a test that ran and found a wrong result (`code`), a job that did not start (`environment`), a doubt on the expected result (`expectation`), or no usable log (`missing`). Only `code`, or an environment the change itself broke, gets a fix: Sonnet gets the failed job's name and the tail of its log, makes a targeted fix, runs the local checks and pushes. The commit the green pipeline ran on is recorded as `ci_sha`. Two fix rounds, then the run ends in `escalated_ci` and the ticket moves to AI blocked.
 
 ### 8. AI review
 
-Once CI is green, a separate non-interactive session (`command claude -p --model sonnet "/code-review medium origin/<base>...HEAD"`, run in the worktree) reviews the branch. It shares nothing with the session that wrote the code. The flow reads the findings from the session's output and posts each one as a thread on the changed line through `forge.sh`, in one format: severity, location, evidence, suggested action. A finding without evidence is posted as a remark and does not block.
+Once CI is green, the flow records the commit it reviews as `reviewed_sha`, then a separate non-interactive session (`command claude -p --model sonnet "/code-review medium origin/<base>...HEAD"`, run in the worktree) reviews the branch. It shares nothing with the session that wrote the code. The flow reads the findings from the session's output and posts each one as a thread on the changed line through `forge.sh`, in one format: severity, location, evidence, suggested action. A finding without evidence is posted as a remark and does not block.
 
 The flow posts the threads itself instead of using `/code-review --comment`, for two reasons. On GitLab, `--comment` writes one note for the whole review, and one note cannot be resolved finding by finding. And the comment watcher ignores comments written by the logged-in user, so it would not see them anyway.
 
@@ -150,7 +150,7 @@ If the team already has a review bot, its comments enter the comment loop like a
 
 ### 9. Comment loop
 
-The loop handles the AI review's findings, plus any comment written by a person or a bot while the run is alive. Haiku sorts each one into five categories:
+The loop handles the AI review's findings, plus any comment written by a person or a bot while the run is alive. Haiku checks each comment against the current code, and checks the diagnosis and the suggested fix separately: a reviewer can find the right problem and suggest the wrong fix. Contradicting comments stay visible as a decision for a human. Then it sorts each one into five categories:
 
 | Category | What the flow does | Thread |
 |----------|-------------------|--------|
@@ -165,6 +165,8 @@ The flow only resolves threads it fixed and checked. Every other thread stays op
 Caps: one fix attempt per comment, two rounds overall. A fix that fails its check leaves the thread open with a note. Past the round cap, the run ends in `escalated_comments`.
 
 ### 10. Handover
+
+Before writing, the handover checks that the last green pipeline ran on the final commit, lists the commits made after the AI review, and picks the review route: `human` when the change touches a risk path, access rights, private data, payment, a business calculation or configuration, or leaves a decision open, `ai` otherwise. The route sets how deep the human reading must be. It never allows a merge.
 
 Sonnet writes the handover comment on the MR from the run's own files: what the MR does in plain language, what changed, how to test it by hand, the points of attention, the open threads, and a checklist before merging. It also drafts the client test steps. Then the MR is marked ready and the ticket moves to Dev validation. The full template is in [handover-report.md](handover-report.md).
 

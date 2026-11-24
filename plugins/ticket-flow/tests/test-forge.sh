@@ -44,7 +44,9 @@ check "find-mr prints number and URL" \
   "$(printf '12\thttps://gitlab.example.com/shop/-/merge_requests/12')" "$(forge find-mr feat/SHOP-1-x)"
 check "find-mr prints nothing without an MR" "" "$(forge find-mr feat/SHOP-2-y)"
 check "ci-status maps failed" "failed" "$(forge ci-status 12)"
-check "ci-status maps canceled to failed" "failed" "$(PIPELINE_STATUS=canceled forge ci-status 12)"
+# A canceled or skipped pipeline gave no result: it is not a success and not a bug to fix.
+check "ci-status maps canceled to blocked" "blocked" "$(PIPELINE_STATUS=canceled forge ci-status 12)"
+check "ci-status maps skipped to blocked" "blocked" "$(PIPELINE_STATUS=skipped forge ci-status 12)"
 check "ci-status maps pending to running" "running" "$(PIPELINE_STATUS=pending forge ci-status 12)"
 check "ci-status maps manual to blocked" "blocked" "$(PIPELINE_STATUS=manual forge ci-status 12)"
 check "ci-status without pipeline" "none" "$(forge ci-status 13)"
@@ -72,6 +74,7 @@ echo "\$*" >>"$WORK/calls"
 case "\$*" in
   "repo view --json nameWithOwner -q .nameWithOwner") echo acme/shop ;;
   "repo view --json visibility -q .visibility") echo "\${VISIBILITY:-PUBLIC}" ;;
+  "pr checks 20 --json bucket") echo "\${CHECKS:-[]}" ;;
   "api repos/acme/shop/issues/142") cat "$F/gh-issue-142.json" ;;
   "api repos/acme/shop/issues/143") cat "$F/gh-issue-143-pr.json" ;;
   "api repos/acme/shop/issues/150") cat "$F/gh-issue-150.json" ;;
@@ -94,6 +97,15 @@ esac
 STUB
 chmod +x "$WORK/bin/gh"
 : >"$WORK/calls"
+
+b() { printf '[%s]' "$(printf '{"bucket":"%s"},' "$@" | sed 's/,$//')"; }
+check "gh ci-status: all passed" "success" "$(CHECKS="$(b pass pass)" forge ci-status 20)"
+check "gh ci-status: passed with a skipped job" "success" "$(CHECKS="$(b pass skipping)" forge ci-status 20)"
+check "gh ci-status: a failure wins" "failed" "$(CHECKS="$(b fail cancel pass)" forge ci-status 20)"
+check "gh ci-status: pending" "running" "$(CHECKS="$(b pass pending)" forge ci-status 20)"
+check "gh ci-status: canceled is blocked" "blocked" "$(CHECKS="$(b pass cancel)" forge ci-status 20)"
+check "gh ci-status: only skipped is blocked" "blocked" "$(CHECKS="$(b skipping skipping)" forge ci-status 20)"
+check "gh ci-status: no checks" "none" "$(forge ci-status 20)"
 
 check "visibility maps public" "public" "$(forge visibility)"
 check "visibility maps private" "private" "$(VISIBILITY=PRIVATE forge visibility)"

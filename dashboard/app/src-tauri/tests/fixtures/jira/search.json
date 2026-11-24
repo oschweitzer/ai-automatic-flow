@@ -1,2 +1,2 @@
-{"nextPageToken":"CAEaAggD","issues":[
-{"id":"10004","key":"DEMO-4","fields":{"summary":"Shipped last week","issuetype":{"name":"Story"},"status":{"name":"Done","statusCategory":{"key":"done"}},"assignee":{"accountId":"5b10ac8d82e05b22cc7d4ef5","displayName":"Olivier Schweitzer"}}}]}
+[{"id":"10003","key":"DEMO-3","fields":{"summary":"Ship release","issuetype":{"name":"Task"},"status":{"name":"Done","statusCategory":{"key":"done"}},"assignee":{"accountId":"id-1","displayName":"Dev One"}}},
+{"id":"10004","key":"DEMO-4","fields":{"summary":"Plan next quarter","issuetype":{"name":"Task"},"status":{"name":"To Do","statusCategory":{"key":"new"}},"assignee":null}}]

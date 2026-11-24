@@ -1,0 +1,4 @@
+✓ Authenticated
+  Site: example.atlassian.net
+  Email: dev@example.com
+  Authentication Type: oauth

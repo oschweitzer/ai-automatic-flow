@@ -18,6 +18,8 @@ Usage: forge.sh <command> [args]
   open-mr <branch> <base> <title> <body-file>
                                         open a draft MR, print "<number>\t<url>"
   ci-status <mr>                        success | failed | running | blocked | none
+                                        (blocked: no result, from a manual, skipped
+                                        or canceled pipeline)
   ci-failed-log <mr> [lines]            tail of each failed job's log
   post-thread <mr> <path> <line> <body-file>
                                         open a thread on a changed line, print its id
@@ -73,8 +75,8 @@ gl_ci_status() {
     (.head_pipeline.status // "") as $s
     | if $s == "" then "none"
       elif $s == "success" then "success"
-      elif $s == "failed" or $s == "canceled" then "failed"
-      elif $s == "manual" or $s == "skipped" then "blocked"
+      elif $s == "failed" then "failed"
+      elif $s == "manual" or $s == "skipped" or $s == "canceled" then "blocked"
       else "running" end'
 }
 
@@ -164,8 +166,9 @@ gh_ci_status() {
   (gh pr checks "$1" --json bucket 2>/dev/null || true) | jq -r '
     [.[].bucket] as $b
     | if ($b | length) == 0 then "none"
-      elif any($b[]; . == "fail" or . == "cancel") then "failed"
+      elif any($b[]; . == "fail") then "failed"
       elif any($b[]; . == "pending") then "running"
+      elif any($b[]; . == "cancel") or all($b[]; . == "skipping") then "blocked"
       else "success" end'
 }
 

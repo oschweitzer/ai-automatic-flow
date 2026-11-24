@@ -10,7 +10,9 @@ Worked examples for a fictional ticket. Match their structure and tone, not thei
 
 _Posted by ticket-flow from the developer's account._
 
-CI green. AI review: 3 findings fixed and resolved, 1 thread left open. Plan approved by the developer.
+CI green on `a41c9e2`. AI review: 3 findings fixed and resolved, 1 thread left open. Plan approved by the developer.
+
+Review: human, because the change adds a database migration and touches pricing. Reviewers: `/code-review` on `7f03b18`, review bot did not answer. One commit after the review (`a41c9e2`, "use roundCents for the discount"), checked by the fix checker only.
 
 Cost of the run: about $3.40 at API rates (Opus $2.10, Sonnet $1.25, Haiku $0.05). Normal tokens: 97k (input 2k, output 95k). Cached tokens: 4.1M (write 310k, read 3.8M).
 
@@ -72,7 +74,10 @@ Threads left open for a human:
 
 ### Before merging
 
-- [x] CI green
+- [x] CI green on the final commit
+- [ ] A person has read the pricing change in `src/cart/discount.ts`
+- [ ] A person has read the migration
+- [ ] A person has read commit `a41c9e2`, made after the AI review
 - [x] Unit and API tests added for the discount rules
 - [ ] Manual test done (steps above)
 - [ ] Open threads answered

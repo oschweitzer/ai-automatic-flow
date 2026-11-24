@@ -33,7 +33,7 @@ Launch `ticket-flow:implementer`, or `ticket-flow:implementer-light` when `plan.
 
 ## 3. Local checks
 
-Run `bash ${CLAUDE_SKILL_DIR}/../../scripts/checks.sh <worktree>`. It prints one line per check and only the tail of a failure.
+Run `bash ${CLAUDE_SKILL_DIR}/../../scripts/checks.sh <worktree>`. It prints one line per check and only the tail of a failure. Save the output of the last run to `checks.txt` in the run folder: the MR description quotes it.
 
 On a failure, send the output to the same agent with SendMessage so it keeps its context, and ask for a fix. Two attempts, then write the end state `escalated_checks` with the failing check as the reason.
 
