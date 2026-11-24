@@ -32,4 +32,4 @@ Rules:
 
 ## Report
 
-When the run stops, report in five lines at most: the end state, the MR URL if any, the open threads, what the developer must do next, and the estimated cost and tokens of the run, the total row of `bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh total <run folder>`.
+When the run stops, report in five lines at most: the end state, the MR URL if any, the open threads, what the developer must do next, and the estimated cost and tokens of the run, the total row of `bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh total <run folder>`. On an `escalated_*` or `timeout` end state, what the developer must do next comes from `escalation.md`, and the report gives its path.

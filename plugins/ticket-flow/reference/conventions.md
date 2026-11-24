@@ -15,9 +15,10 @@ Every ticket-flow skill follows these rules. `<plugin>` below is the plugin root
 | `ticket.md` | triage, a snapshot of the ticket |
 | `triage.json` | triage |
 | `plan.json` | plan |
-| `report.md` | execute |
+| `report.md`, `checks.txt` | execute |
 | `review.txt`, `findings.json` | review |
-| `mr.json` | open-mr, then ci-gate and mr-loop |
+| `mr.json` | open-mr, then ci-gate, review and mr-loop |
+| `escalation.md` | the stage that writes an `escalated_*` or `timeout` end state |
 | `comments.json` | mr-loop, one entry per comment handled |
 | `handover.md`, `client-steps.md`, `assets/` | handover |
 | `log.jsonl` | every skill |
@@ -108,6 +109,28 @@ On a public GitHub repository the MR is public too, whatever the tracker. The ha
 
 Every comment the flow posts on an MR starts with `_ticket-flow_` on its own line, because version 1 posts from the developer's own account.
 
+## Results belong to a commit
+
+A check result or a review is a result on one commit, not on the branch. `mr.json` records which commit got which result:
+
+| Field | Written by | Holds |
+|-------|------------|-------|
+| `ci_sha` | ci-gate, on `green` or `no_ci` | the commit the pipeline ran on |
+| `reviewed_sha` | review, before it runs | the commit `/code-review` read |
+
+Get a commit with `git -C <worktree> rev-parse HEAD` after the push. A green pipeline on commit A says nothing about commit B: after a push, CI runs again, and the commits after `reviewed_sha` are covered only by the fix checker, not by a full review. The handover says so.
+
+A pending, skipped or canceled check is a missing result, not a success and not a bug. `forge.sh ci-status` reports it as `blocked`.
+
+## Review route
+
+The handover decides who must read the MR before merge, from the final diff, so a push that widened the change is taken into account:
+
+- `human` when one of these holds, with the reason: a changed file is under one of the profile's `risk_paths`; the triage or the plan lists a risk; the change touches access rights, private data, payment or a business calculation; the plan has a configuration change; a thread is left open as `human_required` or `question`; a `high` finding was not fixed.
+- `ai` otherwise: a bounded change, covered by tests, with every finding fixed or answered.
+
+When unsure, choose `human`. The route says how deep the human reading must be. It never allows a merge: CI, the tests and the human merge decision still apply.
+
 ## Limits
 
 - Two attempts per failing local check.
@@ -116,6 +139,8 @@ Every comment the flow posts on an MR starts with `_ticket-flow_` on its own lin
 - Two comment rounds.
 
 When a limit is reached, write the matching end state and stop. Never raise a limit on your own.
+
+Stopping does not validate anything, so it leaves a hand-over. Before an `escalated_*` or `timeout` end state, write `escalation.md` in the run folder, in the team language, five short sections: the goal of the stage, what was tried (each attempt and its result), where it is stuck (the same error twice, a decision missing, a result missing, the limit reached), what is still unknown, and the next action with who can take it. The run report points to it.
 
 ## Text written for humans
 

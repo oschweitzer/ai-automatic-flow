@@ -37,6 +37,16 @@ For a ticket, write:
 - `executor` is `haiku` only when the triage marks the change as mechanical and lists no risk. Otherwise `sonnet`.
 - For a bug, the first test case reproduces the bug and must fail before the fix.
 - For a technical change, the existing tests are the safety net. Name the ones that cover the changed code.
+- Start the tests from what the change can break, and make each check observable. Present in the DOM is not visible or working.
+
+  | The change touches | The tests must cover |
+  |--------------------|----------------------|
+  | a button or a screen | it is rendered, visible, clickable and does its action, on desktop and mobile width |
+  | a shared component | the pages that use it, end to end, not only the component |
+  | access rights | the allowed case and the refused case, through the screen and through the API: hiding a button does not secure the API |
+  | an error path | each error case with its own expected result, not "an error happens" |
+
+  A check the repository cannot automate goes in the test list too, marked `manual`, so the handover asks a human for it.
 
 For a story, write a split instead:
 

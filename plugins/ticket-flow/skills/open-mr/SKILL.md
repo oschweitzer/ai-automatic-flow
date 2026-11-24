@@ -19,13 +19,26 @@ Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. The ticket key 
 
    <link to the ticket, from the Tracker section: `Jira: <ticket URL>` or `Issue: #<n>`>
 
+   <the problem before the change, from ticket.md, in one or two sentences>
+
    <behaviour from plan.json, in one or two sentences>
 
+   Checks run locally on <short sha>: <the ok, skip and FAIL lines of checks.txt, one per line>
    Tested: <tests from report.md>
    Not tested: <not_tested from report.md>
 
    A handover comment with test steps follows once CI and the review are done.
+
+   <details><summary>AI and details</summary>
+
+   Files: <each file of plan.json with its change, one line each>
+   Risks: <risk from plan.json, or "none listed">
+   Plan approved: <yes, or auto-approved>
+
+   </details>
    ```
+
+   The summary is for the team: someone must understand the problem before reading the diff. The details are for the reviewers, people or agents. Quote only checks that ran: a test written but not run is not a result.
 
    Then `forge.sh open-mr <branch> <base> "<KEY>: <summary from triage.json>" <run>/mr-body.md`. It prints the number and the URL.
 4. Write `mr.json`: `{"number": 12, "url": "...", "branch": "...", "ci_rounds": 0, "comment_rounds": 0}`.

@@ -23,9 +23,9 @@ Act only on the MR recorded in `mr.json`. Never reply on another MR.
 
    | Category | Do | Thread |
    |----------|----|--------|
-   | `actionable` | fix, below | resolve only if the fix checker says yes |
+   | `actionable` | fix, below. With `suggestion: wrong`, the fix follows `fix`, not the comment, and the reply says why | resolve only if the fix checker says yes |
    | `question` | reply with what the code does today, and say a human will answer | leave open |
-   | `human_required` | reply that this is a decision for the team, and why | leave open |
+   | `human_required` | reply that this is a decision for the team, and why. For a contradiction, link the other thread | leave open |
    | `incorrect` | reply with the reason, politely, citing the code | leave open |
    | `duplicate` | reply with a link to the other thread | leave open |
 
@@ -38,7 +38,7 @@ All actionable comments of a round go to one `ticket-flow:implementer` run on th
 
 Then run `checks.sh <worktree>`, push, and follow `${CLAUDE_SKILL_DIR}/../ci-gate/SKILL.md` until the pipeline is green.
 
-Launch `ticket-flow:fix-checker` with the worktree, the commit range of this round, and the actionable comments. For each:
+Launch `ticket-flow:fix-checker` with the worktree, the commit range of this round, and the actionable comments, each with its `fix` from the triage file: the checker judges the change against the expected behaviour, not against the comment's own suggestion. For each:
 
 - yes: reply `Fixed in <short sha>: <what changed>`, then `forge.sh resolve <mr> <thread>`.
 - no: reply with what is still missing, and leave the thread open for a human.

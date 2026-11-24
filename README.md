@@ -15,6 +15,7 @@ Haiku sorts the ticket (bug, feature, technical change, or a story to split) and
 - [handover-report.md](handover-report.md) describes the report left for the humans at the end: the MR comment for the developer and the test steps for the client.
 - [decisions.md](decisions.md) lists what is settled, the calls I made that need checking, and the questions still open.
 - [comparison.md](comparison.md) compares the first design with a second, service-oriented plan. The merge it proposed is now the design in the other documents.
+- [review-controls.md](review-controls.md) maps the ideas of Florian Bruniaux's talk "Du code au merge" (Dev With AI, October 2026) to what the plugin does about each one, and what it leaves out.
 - [verification.md](verification.md) lists every technical claim these documents rely on, with its source. It also records two corrections to earlier statements.
 
 ## Starting points

@@ -12,6 +12,10 @@ Read `${CLAUDE_SKILL_DIR}/../../reference/conventions.md` first. The ticket key 
 
 The review runs in a separate, non-interactive Claude Code session, so it shares nothing with the session that wrote the code. It reads the repository's `CLAUDE.md`, not the plan.
 
+This review is the one the flow always runs. A team review bot (`review_bot` in the profile) adds to it, never replaces it: if the bot is down, the flow goes on with this review alone, and the handover says the bot did not answer.
+
+Before running it, write `reviewed_sha` in `mr.json`, the commit HEAD of the worktree is on. It must be the commit the pipeline just passed on (`ci_sha`). If it is not, stop and tell the user: the review would read a version CI has not checked.
+
 ## 1. Run it
 
 The review session's tokens count for the run, so give it an ID first: `bash ${CLAUDE_SKILL_DIR}/../../scripts/usage.sh new <run>` records one and prints it. Then, from the worktree, with a 15-minute timeout:
@@ -37,6 +41,8 @@ Read `review.txt` and write `findings.json`, one entry per finding:
 ```
 
 A finding with no evidence keeps `"evidence": ""`. It is posted as a remark and never blocks.
+
+`action` is the reviewer's suggestion, not a decision. The comment loop checks the problem and the suggested fix separately before anything changes.
 
 ## 3. Post them
 

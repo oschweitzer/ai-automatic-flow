@@ -1,6 +1,6 @@
 # ticket-flow
 
-Carries one ticket, from Jira or from the repository's GitHub issues, to a merge request that a human can test and merge. GitLab first, GitHub second. Version 0.3.0 is a draft that has not been run on a real repository yet.
+Carries one ticket, from Jira or from the repository's GitHub issues, to a merge request that a human can test and merge. GitLab first, GitHub second. Version 0.4.0 is a draft that has not been run on a real repository yet.
 
 ## Prerequisites
 
@@ -21,6 +21,10 @@ Each stage can also be run alone: `triage`, `plan`, `execute`, `open-mr`, `ci-ga
 ## Safety
 
 A hook denies pushes to protected branches, force pushes, merging, `reset --hard` and `clean -f`, in every session where the plugin is enabled. The flow resolves only the threads it fixed and checked. Client test steps are posted only after a human has read them.
+
+## Review controls
+
+Every result is tied to the commit it ran on, and the handover says which commits the AI review did not read. A skipped or canceled pipeline counts as a missing result. A red pipeline is diagnosed before any code change. Review comments are checked twice, once for the problem and once for the suggested fix. The handover marks each MR `Review: human` or `Review: AI` from what the change can break, and the route never allows a merge. A stage that gives up leaves `escalation.md`, saying what was tried and what to do next. See `review-controls.md` at the repository root.
 
 ## Tests
 
