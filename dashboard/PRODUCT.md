@@ -10,7 +10,7 @@ A desktop app for Ubuntu, Windows and macOS. The window wraps a web front end, s
 
 ## Stack
 
-Delegated: Tauri with React and TypeScript, chosen during brainstorming on 26 October 2026. Tauri ships one light binary per OS and its Rust side watches local files, calls the forge and Jira APIs and keeps tokens in the OS keychain. React was picked because the code will be written with AI and the team are web developers. The team said Rust skills do not matter since the code is AI-written.
+Delegated: Tauri with React and TypeScript, chosen during brainstorming on 26 October 2026. Tauri ships one light binary per OS and its Rust side watches local files, calls the forge and Jira command-line tools. React was picked because the code will be written with AI and the team are web developers. The team said Rust skills do not matter since the code is AI-written.
 
 ## Users
 
@@ -31,7 +31,7 @@ It reads the plugin's own run folders (`.ticket-flow/runs/<KEY>/`), so it shows 
 - Local data comes from `.ticket-flow/runs/<KEY>/` in each repository: `log.jsonl` (one start and one end line per stage, then an end state), `triage.json`, `plan.json`, `mr.json`, `handover.md`. The run has 8 stages: triage, plan, execute, open-mr, ci-gate, review, mr-loop, handover.
 - Remote data comes from read calls to GitHub or GitLab (PR/MR, CI) and Jira (tickets, statuses, sprints, assignees). Nothing else is remote. There is no server to host.
 - Repositories are found from root folders the developer points the app at. A repository counts when it holds the committed profile `.claude/ticket-flow.md`, which gives its Jira key and forge.
-- The plugin talks to Jira through the Atlassian MCP server, which the app cannot use. The app needs its own Jira API token.
+- The app reads Jira through the Atlassian CLI (`acli`) and its OAuth login, so it stores no Jira token.
 - Builds for the three OS are meant to be published as releases of this repository. They will likely be unsigned at first, so macOS and Windows show a warning on first launch.
 
 ## Capabilities and Constraints
@@ -61,5 +61,5 @@ Clickable mockups from the brainstorming session are in `.superpowers/brainstorm
 
 - What needs the developer comes first, and comes apart from what waits on the client.
 - Show the AI's real progress from its run files, never a guessed one.
-- Zero setup beyond pointing at folders and giving a Jira token. Everything else is read from the repositories and the APIs.
+- Zero setup beyond pointing at folders and logging in to `gh`, `glab` and `acli`. Everything else is read from the repositories and the trackers.
 - Each developer's own tickets by default, the team one click away.

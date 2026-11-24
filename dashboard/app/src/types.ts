@@ -44,9 +44,8 @@ export interface Snapshot {
   people: Person[]; jira: SourceState; forge: SourceState; syncedAt: string;
 }
 
-export interface Settings { roots: string[]; jiraUrl: string; jiraEmail: string; language: 'fr' | 'en' }
+export interface Settings { roots: string[]; language: 'fr' | 'en' }
 /** What `get_settings` returns. The token itself never comes back. */
-export interface SettingsView extends Settings { hasToken: boolean }
 
 /** Tickets are unique by project and key: `GH-<n>` repeats across GitHub repositories. */
 export const ticketId = (t: Pick<Ticket, 'project' | 'key'>) => `${t.project}\n${t.key}`;

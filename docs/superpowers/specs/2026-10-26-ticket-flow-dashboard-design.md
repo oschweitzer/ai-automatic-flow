@@ -30,7 +30,7 @@ The dashboard gives each developer that one place. Success means a developer can
 ## Anti-goals
 
 - A progress bar that guesses. If the run files do not say where a run is, the dashboard says so instead of inventing a percentage.
-- Setup that asks for more than root folders and a Jira token.
+- Setup that asks for more than root folders and the `gh`, `glab` and `acli` logins.
 - A dashboard that becomes a second Jira. It shows what the flow adds and links out for the rest.
 
 ## Users and usage
@@ -141,7 +141,9 @@ The Rust side calls the `gh` and `glab` command-line tools, as the plugin's `for
 
 ### Jira
 
-The app calls the Jira Cloud REST API with the developer's email and an API token, kept in the OS keychain. The Jira site URL, the email and the token are the only settings to type. "Me" is the token's account. Sprints come from the boards of each project.
+The app runs `acli`, the Atlassian CLI, the way it runs `gh` and `glab`, and reuses the developer's login. "Me" is the account found with `assignee = currentUser()`, then `reporter = currentUser()`. The site comes from `acli jira auth status`, so there is no Jira setting to type. Sprints come from the boards of each project, and the backlog is read by JQL.
+
+Decided on 2026-10-29: this replaced the Jira Cloud REST API and its keychain token, because the developer cannot get an API token.
 
 ### Jira scope
 
@@ -181,11 +183,11 @@ The person filter uses the issue assignees, and "me" is the `gh` login. GitHub p
 - Never show or log a token. Never copy log contents beyond the fields listed above.
 - Contrast and focus rules of the design system apply: text at 4.5:1 or more, control borders and focus ring at 3:1 or more, state shown with words.
 - The fonts ship with the app (no network needed to render).
-- The app keeps working with no Jira token: it then shows local runs only for Jira projects and says Jira is not configured. GitHub projects need no Jira token and work fully.
+- The app keeps working without `acli` logged in: it then shows local runs only for Jira projects and says Jira is not configured. GitHub projects need no Jira login and work fully.
 
 ## Left to the builder
 
-- The Rust crates (file watching, keychain, YAML frontmatter), the front-end state and data-fetching libraries, the i18n library.
+- The Rust crates (file watching, YAML frontmatter), the front-end state and data-fetching libraries, the i18n library.
 - Folder layout under `dashboard/`, as long as `PRODUCT.md` and `design-system/` stay where they are.
 - How far below the root folders to look for repositories, and which folders to skip.
 - How the board of a Jira project is found.

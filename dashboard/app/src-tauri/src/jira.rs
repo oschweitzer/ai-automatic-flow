@@ -176,7 +176,7 @@ mod tests {
         assert_eq!(t.summary, "Add login page");
         assert_eq!(t.issue_type, "Story");
         assert_eq!(t.status_category, StatusCategory::InProgress);
-        assert_eq!(t.assignee.unwrap().display_name, "Olivier Schweitzer");
+        assert_eq!(t.assignee.unwrap().display_name, "Dev One");
         assert_eq!(t.sprint_id, Some(7));
         assert_eq!(t.url, "https://x.atlassian.net/browse/DEMO-1");
     }

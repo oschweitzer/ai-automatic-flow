@@ -1,25 +1,25 @@
 import { useEffect, useReducer, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSnapshot } from './useSnapshot';
-import type { SettingsView } from './types';
+import type { Settings as SettingsData } from './types';
 import { Sidebar, type View } from './screens/Sidebar';
 import { Overview } from './screens/Overview';
 import { ProjectScreen } from './screens/ProjectScreen';
 import { Settings } from './screens/Settings';
 import './app.css';
 
-const NO_SETTINGS: SettingsView = { roots: [], jiraUrl: '', jiraEmail: '', language: 'fr', hasToken: false };
+const NO_SETTINGS: SettingsData = { roots: [], language: 'fr' };
 
 export default function App() {
   const { snapshot, refresh } = useSnapshot();
-  const [settings, setSettings] = useState<SettingsView | null>(null);
+  const [settings, setSettings] = useState<SettingsData | null>(null);
   const [view, setView] = useState<View>({ kind: 'all' });
   const [loadError, setLoadError] = useState<string>();
   // Bumped when a project's filters change, so the sidebar and overview counts follow.
   const [, prefsChanged] = useReducer((n: number) => n + 1, 0);
 
   useEffect(() => {
-    invoke<SettingsView>('get_settings')
+    invoke<SettingsData>('get_settings')
       .catch((e) => { setLoadError(String(e)); return NO_SETTINGS; })
       .then((s) => { setSettings(s); if (!s.roots.length) setView({ kind: 'settings' }); });
   }, []);

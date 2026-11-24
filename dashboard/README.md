@@ -8,8 +8,8 @@ Ticket Flow Dashboard is a desktop app built with Tauri 2. It shows your tickets
 - Rust (stable) with cargo.
 - On Linux, the Tauri system packages: `libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev`.
 - `gh` (GitHub) or `glab` (GitLab) installed and logged in, depending on where your repositories live.
-- On macOS, an app opened from Finder or the Dock does not get your shell's PATH. The app also looks for `gh` and `glab` in `/opt/homebrew/bin` and `/usr/local/bin`, where Homebrew puts them. Installed anywhere else, they are not found.
-- On Linux, a Secret Service such as GNOME Keyring or KWallet. The app stores the Jira token there.
+- `acli` (Atlassian CLI) logged in with `acli jira auth login --web`, for Jira projects.
+- On macOS, an app opened from Finder or the Dock does not get your shell's PATH. The app also looks for `gh`, `glab` and `acli` in `/opt/homebrew/bin` and `/usr/local/bin`, where Homebrew puts them. Installed anywhere else, they are not found.
 
 ## First launch
 
@@ -17,11 +17,11 @@ The app opens on the settings the first time.
 
 Type your root folders, one per line. The app looks for repositories up to three folder levels below each root. A root may start with `~`, which stands for your home folder (`~/work` for example).
 
-Then fill in the Jira site URL (like `https://example.atlassian.net`), your Jira email and an API token. Create the token at id.atlassian.com, under Security, then API tokens. The app keeps the token in the OS keychain, never in its settings file.
+Jira needs no setting, only the `acli` login.
 
 Each source is optional.
 
-- With no Jira settings, Jira projects show your local runs only. GitHub projects work fully.
+- Without `acli` logged in, Jira projects show your local runs only. GitHub projects work fully.
 - With no `gh`, GitHub projects show local runs but no issues, and no merge request state on GitHub.
 - With no `glab`, runs in GitLab repositories show without their merge request state.
 
