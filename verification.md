@@ -43,6 +43,7 @@ The first proposal presented "parallel cost 1.8 times as much as inline" as a fi
 | `glab api` sends `-f` as strings and `-F` with type conversion, reads `@file` values from a file, needs `--form` for uploads, sends `-f` as query parameters on a GET, and rejects bracketed field names in a JSON body (a nested value such as `position` goes as a JSON object with `-F`) | [GitLab CLI docs](https://gitlab.com/gitlab-org/cli/-/tree/main/docs/source) |
 | `glab mr create` takes `--draft`, `--target-branch`, `--source-branch`, `--title` and `--description-file`. Its `--attach` flag is experimental. `glab mr update --ready` marks a draft ready. `glab ci get --merge-request <iid> --output json` reads the MR's head pipeline. `glab api` prefixes paths with `/api/v4/` and accepts `:id` and `:fullpath` placeholders | [GitLab CLI docs](https://gitlab.com/gitlab-org/cli/-/tree/main/docs/source) |
 | `gh pr create` takes `--draft` and `--attach` (an image or video for the PR body). `gh pr ready` marks a draft ready | [GitHub CLI manual](https://cli.github.com/manual/gh_pr_create) |
+| A `.bru` request is a list of blocks: `meta { name, type: http, seq }`, the method block (`post { url, body: json, auth: none }`), `headers { Name: value }`, `body:json { ... }` and `assert { res.status: eq 200 }`. A file in that shape parses and is rewritten unchanged by Bruno's own parser | `@usebruno/lang` (`bruToJsonV2`, `jsonToBruV2`) in Bruno 4.2.1 installed here, found with REA 6.8.0 and run on a sample, 29 October 2026 |
 
 ## Not verified yet
 
@@ -58,7 +59,7 @@ These need a check during the spike on the test repository.
 - The GitHub column of the `forge.sh` table, apart from `gh pr create --draft` and `gh pr ready`.
 - Whether `createJiraIssue` can create a sub-task under a story (the parent field and the sub-task issue type).
 - That a GitLab project or group access token gives a non-human identity for the comments. I know this from GitLab, not from a page read for these documents.
-- The format of Bruno request files (`.bru`) and of a Postman collection item, before the handover generates them.
+- The format of a Postman collection item, before the handover generates it.
 - That curl ships with current Windows versions as `curl.exe`, and that `curl` is an alias for `Invoke-WebRequest` in Windows PowerShell 5.1 but not in PowerShell 7. I know this from experience, not from Microsoft's documentation.
 - Whether the Atlassian MCP server can attach files to a ticket. Its tools in this session have no attachment operation.
 - Whether a Team or Enterprise seat may be assigned to a shared or non-human account. The documentation I read does not cover it, so the terms need checking with Anthropic.
