@@ -9,6 +9,7 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 const CLI_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+const ACLI_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 pub trait Runner: Send + Sync {
     fn run(&self, dir: &Path, program: &str, args: &[&str]) -> Result<String, String>;
@@ -35,7 +36,9 @@ impl Runner for SystemRunner {
                 cmd.env("PATH", path);
             }
         }
-        let (success, stdout, stderr) = output(cmd, program, CLI_TIMEOUT)?;
+        // acli pages 50 tickets at a time at about 4 s a page, a 430-ticket search measured 49-66 s.
+        let limit = if program == "acli" { ACLI_TIMEOUT } else { CLI_TIMEOUT };
+        let (success, stdout, stderr) = output(cmd, program, limit)?;
         if success {
             Ok(stdout)
         } else {

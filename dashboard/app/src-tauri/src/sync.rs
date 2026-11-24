@@ -136,7 +136,8 @@ fn watch_runs(app: &AppHandle, st: &AppState, projects: &[ProjectDef]) {
     }).ok().map(|d| (paths, d));
 }
 
-/// Fetches Jira and the forge, keeping the last data of any source or item that fails.
+/// Fetches the forge, then Jira, keeping the last data of any source or item that fails.
+/// The forge goes first and matches the Jira tickets of the previous cycle, so a refresh shows CI and MR state without waiting for the slow Jira search. Tickets new to Jira get their MR on the next poll.
 pub async fn fetch(app: &AppHandle) {
     let st = app.state::<AppState>();
     let _one = st.fetching.lock().await;
@@ -144,14 +145,26 @@ pub async fn fetch(app: &AppHandle) {
         let i = st.inner.lock().await;
         (i.projects.clone(), i.runs.clone(), i.remote.clone())
     };
+    let projects2 = projects.clone();
     let Some(remote) = blocking(move || {
-        fetch_jira(&SystemRunner, &mut remote, &projects);
         fetch_forge(&SystemRunner, &projects, &runs, &mut remote, Utc::now());
         remote
     }).await else { return };
     let snap = {
         let mut i = st.inner.lock().await;
-        i.remote = remote;
+        i.remote = remote.clone();
+        rebuild(&mut i)
+    };
+    emit(app, snap);
+    let mut remote = remote;
+    let Some(remote) = blocking(move || {
+        fetch_jira(&SystemRunner, &mut remote, &projects2);
+        remote
+    }).await else { return };
+    let snap = {
+        let mut i = st.inner.lock().await;
+        // Only the Jira parts: nothing else may be undone by this write.
+        (i.remote.jira, i.remote.me_jira, i.remote.jira_state) = (remote.jira, remote.me_jira, remote.jira_state);
         rebuild(&mut i)
     };
     emit(app, snap);
@@ -163,6 +176,12 @@ fn after(errors: Vec<String>, configured: bool, prev: &SourceState, now: DateTim
 }
 
 fn fetch_jira(r: &dyn Runner, remote: &mut Remote, projects: &[ProjectDef]) {
+    let keys: Vec<&str> = projects.iter().filter(|p| p.tracker == Tracker::Jira).map(|p| p.key.as_str()).collect();
+    if keys.is_empty() {
+        (remote.jira, remote.me_jira) = (vec![], None);
+        remote.jira_state = SourceState { configured: false, ok: false, error: None, last_ok_at: None };
+        return;
+    }
     let base = match jira::site(r) {
         Ok(b) => b,
         Err(e) if jira::not_configured(&e) => {
@@ -184,7 +203,6 @@ fn fetch_jira(r: &dyn Runner, remote: &mut Remote, projects: &[ProjectDef]) {
         }
     }
     let mut errors = vec![];
-    let keys: Vec<&str> = projects.iter().filter(|p| p.tracker == Tracker::Jira).map(|p| p.key.as_str()).collect();
     for key in &keys {
         match jira::project(r, &base, key) {
             Ok(j) => {
@@ -573,8 +591,21 @@ mod tests {
     #[test]
     fn fetch_jira_logged_out_is_not_configured() {
         let mut remote = Remote::default();
+        remote.jira = tickets(&["SHOP-1".into()], StatusCategory::Todo);
+        remote.me_jira = Some(Person { account_id: "a".into(), display_name: "A".into() });
         fetch_jira(&Fake::new(|_, _, _| Err("acli: ✗ Error: unauthorized: use 'acli jira auth login' to authenticate".into())), &mut remote, &shop_jira());
         assert!(!remote.jira_state.configured);
+        assert!(remote.jira.is_empty() && remote.me_jira.is_none());
+    }
+
+    #[test]
+    fn fetch_jira_without_jira_projects_runs_no_acli() {
+        let projects = vec![ProjectDef { key: "acme/shop".into(), tracker: Tracker::Github, repos: vec![] }];
+        let mut remote = Remote { jira: tickets(&["SHOP-1".into()], StatusCategory::Todo), ..Remote::default() };
+        let f = Fake::new(|_, _, _| Ok("[]".into()));
+        fetch_jira(&f, &mut remote, &projects);
+        assert!(f.calls().is_empty());
+        assert!(!remote.jira_state.configured && remote.jira.is_empty());
     }
 
     #[test]

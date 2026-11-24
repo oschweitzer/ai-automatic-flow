@@ -141,7 +141,7 @@ The Rust side calls the `gh` and `glab` command-line tools, as the plugin's `for
 
 ### Jira
 
-The app runs `acli`, the Atlassian CLI, the way it runs `gh` and `glab`, and reuses the developer's login. "Me" is the account found with `assignee = currentUser()`, then `reporter = currentUser()`. The site comes from `acli jira auth status`, so there is no Jira setting to type. Sprints come from the boards of each project, and the backlog is read by JQL.
+The app runs `acli`, the Atlassian CLI, the way it runs `gh` and `glab`, and reuses the developer's login. "Me" is the account found with `assignee = currentUser()`, then `reporter = currentUser()`. The site comes from `acli jira auth status`, so there is no Jira setting to type, and the Jira projects must live on the site `acli` is logged in to (`acli jira auth switch` changes it). Sprints come from the boards of each project, and the backlog is read by JQL.
 
 Decided on 2026-10-29: this replaced the Jira Cloud REST API and its keychain token, because the developer cannot get an API token.
 
@@ -155,7 +155,7 @@ A project with no sprint (a Kanban board, or no board) hides the sprint chips an
 
 ### Refresh
 
-Local changes show within a few seconds. Jira and the forge are polled every 2 minutes while the window is visible, and a refresh button forces it. The sidebar shows the time of the last sync and a warning when a source fails.
+Local changes show within a few seconds. Jira and the forge are polled every 2 minutes while the window is visible, and a refresh button forces it. Each poll reads the forge first, matching the Jira tickets of the previous poll, then Jira, so a refresh shows CI and MR state without waiting for the slow Jira search. A ticket new to Jira gets its MR on the next poll. The sidebar shows the time of the last sync and a warning when a source fails.
 
 ### Failures
 

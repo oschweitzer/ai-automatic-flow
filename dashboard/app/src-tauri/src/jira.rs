@@ -92,9 +92,9 @@ pub fn site(r: &dyn Runner) -> Result<String, String> {
     host.map(|h| format!("https://{h}")).ok_or_else(|| "jira: unexpected auth status".into())
 }
 
-/// Logged out, or acli not installed.
+/// Logged out, or acli not installed (Unix reports os error 2, Windows "program not found").
 pub fn not_configured(e: &str) -> bool {
-    e.contains("unauthorized") || e.contains("(os error 2)")
+    e.contains("unauthorized") || e.contains("(os error 2)") || e.contains("program not found")
 }
 
 /// Issues of every JSON document in the output: bare arrays (workitem search) or `{"issues":[..]}` pages (--paginate prints one per page).
@@ -126,21 +126,23 @@ fn parse_tickets(out: &str, base: &str, sprint_id: Option<u64>) -> Result<Vec<Ji
 }
 
 pub fn project(r: &dyn Runner, base: &str, key: &str) -> Result<JiraProject, String> {
-    // shortcut: first page only (50), enough for one project's boards and open sprints, no paging in acli board search
+    // shortcut: first page only (50), enough for one project's boards, add --paginate to board search if a project ever has more
     let boards = parse_board_ids(&json(&acli(r, &["jira", "board", "search", "--project", key, "--type", "scrum", "--json"])?)?);
     let scope = project_jql(key);
     let (mut sprints, mut tickets_) = (vec![], vec![]);
     for b in &boards {
         let b = b.to_string();
-        // shortcut: first page only (50), enough for one project's open sprints, no paging in acli list-sprints
+        // shortcut: first page only (50), enough for one project's open sprints, add --paginate to list-sprints if a project ever has more
         let out = acli(r, &["jira", "board", "list-sprints", "--id", &b, "--state", "active,future", "--json"])?;
         for s in parse_sprints(&json(&out)?) {
+            // A sprint shared by two boards is listed once.
+            if sprints.iter().any(|x: &Sprint| x.id == s.id) {
+                continue;
+            }
             let id = s.id.to_string();
             let args = ["jira", "sprint", "list-workitems", "--board", &b, "--sprint", &id, "--jql", &scope, "--fields", FIELDS, "--paginate", "--json"];
             tickets_.extend(parse_tickets(&acli(r, &args)?, base, Some(s.id))?);
-            if !sprints.iter().any(|x: &Sprint| x.id == s.id) {
-                sprints.push(s);
-            }
+            sprints.push(s);
         }
     }
     let has_sprints = !sprints.is_empty();
@@ -223,6 +225,7 @@ mod tests {
     fn spots_logged_out_or_missing_acli() {
         assert!(not_configured("acli: ✗ Error: unauthorized: use 'acli jira auth login' to authenticate"));
         assert!(not_configured("acli: No such file or directory (os error 2)"));
+        assert!(not_configured("acli: program not found"));
         assert!(!not_configured("acli: timed out"));
     }
 

@@ -11,7 +11,7 @@ vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(() => Promise.resolve(()
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn(async () => {}), openPath: vi.fn(async () => {}) }));
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
-const me: Person = { accountId: 'me', displayName: 'Olivier Schweitzer' };
+const me: Person = { accountId: 'me', displayName: 'Dev One' };
 const alice: Person = { accountId: 'alice', displayName: 'Alice Lambert' };
 const gh: Person = { accountId: 'oschw', displayName: 'oschw' };
 

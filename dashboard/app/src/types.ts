@@ -45,7 +45,6 @@ export interface Snapshot {
 }
 
 export interface Settings { roots: string[]; language: 'fr' | 'en' }
-/** What `get_settings` returns. The token itself never comes back. */
 
 /** Tickets are unique by project and key: `GH-<n>` repeats across GitHub repositories. */
 export const ticketId = (t: Pick<Ticket, 'project' | 'key'>) => `${t.project}\n${t.key}`;

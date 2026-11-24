@@ -17,7 +17,9 @@ The app opens on the settings the first time.
 
 Type your root folders, one per line. The app looks for repositories up to three folder levels below each root. A root may start with `~`, which stands for your home folder (`~/work` for example).
 
-Jira needs no setting, only the `acli` login.
+Jira needs no setting, only the `acli` login. Your Jira projects must live on the site `acli` is logged in to, shown by `acli jira auth status` and changed with `acli jira auth switch`.
+
+If you used an earlier version of the app, you can delete its keychain entry under the service `ticket-flow-dashboard` and revoke its token at id.atlassian.com.
 
 Each source is optional.
 
