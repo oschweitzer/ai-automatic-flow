@@ -1,6 +1,6 @@
 use crate::classify::MrState;
 use crate::forge::{self, Runner, SystemRunner};
-use crate::jira::JiraClient;
+use crate::jira;
 use crate::repos::{self, ProjectDef, Tracker};
 use crate::runs::{read_runs, RunState};
 use crate::settings::{self, Settings};
@@ -15,7 +15,6 @@ use tauri::{AppHandle, Emitter, Manager};
 
 pub const POLL: Duration = Duration::from_secs(120);
 const DEBOUNCE: Duration = Duration::from_millis(500);
-const NOT_CONFIGURED: &str = "jira: not configured";
 
 pub struct Inner {
     pub settings: Settings,
@@ -141,14 +140,12 @@ fn watch_runs(app: &AppHandle, st: &AppState, projects: &[ProjectDef]) {
 pub async fn fetch(app: &AppHandle) {
     let st = app.state::<AppState>();
     let _one = st.fetching.lock().await;
-    let (s, projects, runs, mut remote) = {
+    let (projects, runs, mut remote) = {
         let i = st.inner.lock().await;
-        (i.settings.clone(), i.projects.clone(), i.runs.clone(), i.remote.clone())
+        (i.projects.clone(), i.runs.clone(), i.remote.clone())
     };
-    let email = s.jira_email.clone();
-    let token = if email.is_empty() { None } else { blocking(move || settings::token(&email)).await.flatten() };
-    fetch_jira(&mut remote, &s, token, &projects).await;
     let Some(remote) = blocking(move || {
+        fetch_jira(&SystemRunner, &mut remote, &projects);
         fetch_forge(&SystemRunner, &projects, &runs, &mut remote, Utc::now());
         remote
     }).await else { return };
@@ -165,14 +162,10 @@ fn after(errors: Vec<String>, configured: bool, prev: &SourceState, now: DateTim
     SourceState { configured, ok, error: errors.into_iter().next(), last_ok_at: if ok { Some(now) } else { prev.last_ok_at } }
 }
 
-async fn fetch_jira(remote: &mut Remote, s: &Settings, token: Option<String>, projects: &[ProjectDef]) {
-    let client = match token.filter(|t| !t.is_empty()) {
-        Some(t) if !s.jira_email.is_empty() => JiraClient::new(&s.jira_url, &s.jira_email, &t),
-        _ => Err(NOT_CONFIGURED.to_string()),
-    };
-    let client = match client {
-        Ok(c) => c,
-        Err(e) if e == NOT_CONFIGURED => {
+fn fetch_jira(r: &dyn Runner, remote: &mut Remote, projects: &[ProjectDef]) {
+    let base = match jira::site(r) {
+        Ok(b) => b,
+        Err(e) if jira::not_configured(&e) => {
             (remote.jira, remote.me_jira) = (vec![], None);
             remote.jira_state = SourceState { configured: false, ok: false, error: Some(e), last_ok_at: None };
             return;
@@ -182,9 +175,9 @@ async fn fetch_jira(remote: &mut Remote, s: &Settings, token: Option<String>, pr
             return;
         }
     };
-    // A 401 or an unreachable site fails here once, not once per project.
-    match client.myself().await {
-        Ok(me) => remote.me_jira = Some(me),
+    // A logged-out acli or an unreachable site fails here once, not once per project.
+    match jira::me(r) {
+        Ok(me) => remote.me_jira = me,
         Err(e) => {
             remote.jira_state = after(vec![e], true, &remote.jira_state, Utc::now());
             return;
@@ -193,7 +186,7 @@ async fn fetch_jira(remote: &mut Remote, s: &Settings, token: Option<String>, pr
     let mut errors = vec![];
     let keys: Vec<&str> = projects.iter().filter(|p| p.tracker == Tracker::Jira).map(|p| p.key.as_str()).collect();
     for key in &keys {
-        match client.project(key).await {
+        match jira::project(r, &base, key) {
             Ok(j) => {
                 remote.jira.retain(|x| x.key != *key);
                 remote.jira.push(j);
@@ -551,7 +544,7 @@ mod tests {
     }
 
     #[test]
-    fn jira_without_token_keeps_github_issues() {
+    fn fetch_jira_without_acli_is_not_configured() {
         let projects = vec![
             ProjectDef { key: "SHOP".into(), tracker: Tracker::Jira, repos: vec![] },
             ProjectDef { key: "acme/shop".into(), tracker: Tracker::Github, repos: vec![] },
@@ -563,12 +556,32 @@ mod tests {
             issues: HashMap::from([("acme/shop".to_string(), vec![issue])]),
             ..Remote::default()
         };
-        tauri::async_runtime::block_on(fetch_jira(&mut remote, &Settings::default(), None, &projects));
+        fetch_jira(&Fake::new(|_, p, _| Err(format!("{p}: No such file or directory (os error 2)"))), &mut remote, &projects);
+        assert!(remote.jira_state.error.as_deref().unwrap().contains("os error 2"));
         assert!(!remote.jira_state.configured);
         assert!(remote.jira.is_empty() && remote.me_jira.is_none());
         assert_eq!(remote.issues["acme/shop"].len(), 1);
         let s = snapshot(&projects, &[], &remote, Utc::now());
         assert!(!s.jira.configured);
         assert_eq!(s.tickets.iter().map(|t| t.key.as_str()).collect::<Vec<_>>(), vec!["GH-1"]);
+    }
+
+    fn shop_jira() -> Vec<ProjectDef> {
+        vec![ProjectDef { key: "SHOP".into(), tracker: Tracker::Jira, repos: vec![] }]
+    }
+
+    #[test]
+    fn fetch_jira_logged_out_is_not_configured() {
+        let mut remote = Remote::default();
+        fetch_jira(&Fake::new(|_, _, _| Err("acli: ✗ Error: unauthorized: use 'acli jira auth login' to authenticate".into())), &mut remote, &shop_jira());
+        assert!(!remote.jira_state.configured);
+    }
+
+    #[test]
+    fn fetch_jira_timeout_keeps_last_data() {
+        let mut remote = Remote { jira: tickets(&["SHOP-1".into()], StatusCategory::Todo), ..Remote::default() };
+        fetch_jira(&Fake::new(|_, _, _| Err("acli: timed out".into())), &mut remote, &shop_jira());
+        assert!(remote.jira_state.configured && !remote.jira_state.ok);
+        assert_eq!(remote.jira.len(), 1);
     }
 }

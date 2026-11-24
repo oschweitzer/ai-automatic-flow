@@ -1,4 +1,5 @@
 use crate::classify::{JiraTicket, Person, StatusCategory};
+use crate::forge::Runner;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -17,20 +18,6 @@ pub struct JiraProject {
     pub sprints: Vec<Sprint>,
     pub has_sprints: bool,
     pub tickets: Vec<JiraTicket>,
-}
-
-// No derived Debug: the token must never be printed.
-pub struct JiraClient {
-    base: String,
-    email: String,
-    token: String,
-    http: reqwest::Client,
-}
-
-impl std::fmt::Debug for JiraClient {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("JiraClient").field("base", &self.base).field("token", &"<redacted>").finish()
-    }
 }
 
 const FIELDS: &str = "summary,status,issuetype,assignee";
@@ -62,31 +49,12 @@ pub fn parse_issue(v: &Value, base_url: &str, sprint_id: Option<u64>) -> Option<
     })
 }
 
-pub struct Page {
-    pub tickets: Vec<JiraTicket>,
-    pub next_token: Option<String>, // /search/jql paging
-    pub raw_count: usize,           // agile paging (startAt)
-    pub total: Option<u64>,
-    pub is_last: bool,
-}
-
-pub fn parse_page(v: &Value, base_url: &str, sprint_id: Option<u64>) -> Page {
-    let issues = v["issues"].as_array().map(Vec::as_slice).unwrap_or_default();
-    Page {
-        tickets: issues.iter().filter_map(|i| parse_issue(i, base_url, sprint_id)).collect(),
-        next_token: v["nextPageToken"].as_str().map(String::from),
-        raw_count: issues.len(),
-        total: v["total"].as_u64(),
-        is_last: v["isLast"].as_bool().unwrap_or(false),
-    }
-}
-
 pub fn parse_board_ids(v: &Value) -> Vec<u64> {
     v["values"].as_array().map(|a| a.iter().filter_map(|b| b["id"].as_u64()).collect()).unwrap_or_default()
 }
 
 pub fn parse_sprints(v: &Value) -> Vec<Sprint> {
-    v["values"]
+    v["sprints"]
         .as_array()
         .map(|a| {
             a.iter()
@@ -98,33 +66,6 @@ pub fn parse_sprints(v: &Value) -> Vec<Sprint> {
         .unwrap_or_default()
 }
 
-// Basic auth sends the token, so plain http is refused.
-pub fn check_url(url: &str) -> Result<String, String> {
-    let u = url.trim().trim_end_matches('/');
-    if u.is_empty() {
-        Err("jira: not configured".into())
-    } else if !u.starts_with("https://") {
-        Err("jira: https required".into())
-    } else {
-        Ok(u.to_string())
-    }
-}
-
-// A site without Jira Software answers 404 on the agile API: treat it as "no board".
-pub fn boards_or_none(r: Result<Value, String>) -> Result<Vec<u64>, String> {
-    match r {
-        Ok(v) => Ok(parse_board_ids(&v)),
-        Err(e) if e == "jira: 404" => Ok(vec![]),
-        Err(e) => Err(e),
-    }
-}
-
-// Stop on an empty page, the last page, or a token already seen.
-pub fn next_token_to_follow(p: &Page, seen: &[String]) -> Option<String> {
-    let t = p.next_token.as_ref()?;
-    (p.raw_count > 0 && !p.is_last && !seen.contains(t)).then(|| t.clone())
-}
-
 fn project_jql(key: &str) -> String {
     format!("project = \"{}\"", key.replace('"', ""))
 }
@@ -132,122 +73,99 @@ fn project_jql(key: &str) -> String {
 pub fn search_jql(key: &str, has_sprints: bool) -> String {
     let p = project_jql(key);
     if has_sprints {
-        format!("{p} AND statusCategory = Done AND statusCategoryChangedDate >= -14d")
+        // Replaces the agile backlog endpoint, which acli lacks: backlog, kanban-style, plus the recently done.
+        format!(
+            "{p} AND ((statusCategory != Done AND (sprint is EMPTY OR (sprint not in openSprints() AND sprint not in futureSprints()))) OR (statusCategory = Done AND statusCategoryChangedDate >= -14d))"
+        )
     } else {
         format!("{p} AND (statusCategory != Done OR statusCategoryChangedDate >= -14d)")
     }
 }
 
-fn enc(s: &str) -> String {
-    urlencoding::encode(s).into_owned()
+fn acli(r: &dyn Runner, args: &[&str]) -> Result<String, String> {
+    r.run(&std::env::temp_dir(), "acli", args)
 }
 
-fn search_url(base: &str, jql: &str, token: Option<&str>) -> String {
-    let mut u = format!("{base}/rest/api/3/search/jql?jql={}&fields={FIELDS}&maxResults=100", enc(jql));
-    if let Some(t) = token {
-        u.push_str(&format!("&nextPageToken={}", enc(t)));
-    }
-    u
+pub fn site(r: &dyn Runner) -> Result<String, String> {
+    let out = acli(r, &["jira", "auth", "status"])?;
+    let host = out.lines().find_map(|l| l.trim().strip_prefix("Site:")).map(str::trim).filter(|h| !h.is_empty());
+    host.map(|h| format!("https://{h}")).ok_or_else(|| "jira: unexpected auth status".into())
 }
 
-impl JiraClient {
-    pub fn new(url: &str, email: &str, token: &str) -> Result<Self, String> {
-        let base = check_url(url)?;
-        let http = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(20))
-            .build()
-            .map_err(|_| "jira: client setup failed".to_string())?;
-        Ok(JiraClient { base, email: email.into(), token: token.into(), http })
-    }
+/// Logged out, or acli not installed.
+pub fn not_configured(e: &str) -> bool {
+    e.contains("unauthorized") || e.contains("(os error 2)")
+}
 
-    async fn get(&self, url: &str) -> Result<Value, String> {
-        let resp = self
-            .http
-            .get(url)
-            .basic_auth(&self.email, Some(&self.token))
-            .header("Accept", "application/json")
-            .send()
-            .await
-            .map_err(|e| if e.is_timeout() { "jira: timeout".to_string() } else { "jira: unreachable".to_string() })?;
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(format!("jira: {}", status.as_u16()));
-        }
-        resp.json().await.map_err(|_| "jira: unexpected response".to_string())
+/// Issues of every JSON document in the output: bare arrays (workitem search) or `{"issues":[..]}` pages (--paginate prints one per page).
+fn issues(out: &str) -> Result<Vec<Value>, String> {
+    let mut all = vec![];
+    for doc in serde_json::Deserializer::from_str(out).into_iter::<Value>() {
+        let doc = doc.map_err(|_| "jira: unexpected acli output".to_string())?;
+        let items = if doc.is_array() { &doc } else { &doc["issues"] };
+        all.extend(items.as_array().cloned().unwrap_or_default());
     }
+    Ok(all)
+}
 
-    pub async fn myself(&self) -> Result<Person, String> {
-        let v = self.get(&format!("{}/rest/api/3/myself", self.base)).await?;
-        Ok(Person {
-            account_id: v["accountId"].as_str().ok_or("jira: unexpected response")?.to_string(),
-            display_name: v["displayName"].as_str().unwrap_or_default().to_string(),
-        })
-    }
-
-    // Agile endpoints page with startAt.
-    async fn agile_issues(&self, path: &str, extra: &str, sprint_id: Option<u64>) -> Result<Vec<JiraTicket>, String> {
-        let (mut out, mut start) = (vec![], 0usize);
-        loop {
-            let url = format!("{}{path}?{extra}fields={FIELDS}&maxResults=100&startAt={start}", self.base);
-            let p = parse_page(&self.get(&url).await?, &self.base, sprint_id);
-            start += p.raw_count;
-            out.extend(p.tickets);
-            if p.raw_count == 0 || p.total.is_none_or(|t| start as u64 >= t) {
-                return Ok(out);
+pub fn me(r: &dyn Runner) -> Result<Option<Person>, String> {
+    for field in ["assignee", "reporter"] {
+        let jql = format!("{field} = currentUser() ORDER BY updated DESC");
+        let found = issues(&acli(r, &["jira", "workitem", "search", "--jql", &jql, "--fields", field, "--limit", "1", "--json"])?)?;
+        if let Some(p) = found.first().map(|i| &i["fields"][field]) {
+            if let Some(id) = p["accountId"].as_str() {
+                return Ok(Some(Person { account_id: id.into(), display_name: p["displayName"].as_str().unwrap_or(id).into() }));
             }
         }
     }
+    Ok(None)
+}
 
-    async fn search(&self, jql: &str) -> Result<Vec<JiraTicket>, String> {
-        let (mut out, mut token, mut seen) = (vec![], None::<String>, Vec::<String>::new());
-        loop {
-            let p = parse_page(&self.get(&search_url(&self.base, jql, token.as_deref())).await?, &self.base, None);
-            let next = next_token_to_follow(&p, &seen);
-            out.extend(p.tickets);
-            match next {
-                Some(t) => {
-                    seen.push(t.clone());
-                    token = Some(t);
-                }
-                None => return Ok(out),
+fn parse_tickets(out: &str, base: &str, sprint_id: Option<u64>) -> Result<Vec<JiraTicket>, String> {
+    Ok(issues(out)?.iter().filter_map(|i| parse_issue(i, base, sprint_id)).collect())
+}
+
+pub fn project(r: &dyn Runner, base: &str, key: &str) -> Result<JiraProject, String> {
+    // shortcut: first page only (50), enough for one project's boards and open sprints, no paging in acli board search
+    let boards = parse_board_ids(&json(&acli(r, &["jira", "board", "search", "--project", key, "--type", "scrum", "--json"])?)?);
+    let scope = project_jql(key);
+    let (mut sprints, mut tickets_) = (vec![], vec![]);
+    for b in &boards {
+        let b = b.to_string();
+        // shortcut: first page only (50), enough for one project's open sprints, no paging in acli list-sprints
+        let out = acli(r, &["jira", "board", "list-sprints", "--id", &b, "--state", "active,future", "--json"])?;
+        for s in parse_sprints(&json(&out)?) {
+            let id = s.id.to_string();
+            let args = ["jira", "sprint", "list-workitems", "--board", &b, "--sprint", &id, "--jql", &scope, "--fields", FIELDS, "--paginate", "--json"];
+            tickets_.extend(parse_tickets(&acli(r, &args)?, base, Some(s.id))?);
+            if !sprints.iter().any(|x: &Sprint| x.id == s.id) {
+                sprints.push(s);
             }
         }
     }
+    let has_sprints = !sprints.is_empty();
+    let jql = search_jql(key, has_sprints);
+    tickets_.extend(parse_tickets(&acli(r, &["jira", "workitem", "search", "--jql", &jql, "--fields", FIELDS, "--paginate", "--json"])?, base, None)?);
+    let mut seen = std::collections::HashSet::new();
+    tickets_.retain(|t| seen.insert(t.key.clone()));
+    Ok(JiraProject { key: key.to_string(), sprints, has_sprints, tickets: tickets_ })
+}
 
-    pub async fn project(&self, key: &str) -> Result<JiraProject, String> {
-        // shortcut: first page only (50), enough for one project's boards and open sprints, page with startAt if a project ever has more
-        let boards = boards_or_none(
-            self.get(&format!("{}/rest/agile/1.0/board?projectKeyOrId={}&type=scrum", self.base, enc(key))).await,
-        )?;
-        let scope = project_jql(key);
-        let (mut sprints, mut tickets) = (vec![], vec![]);
-        for b in &boards {
-            // shortcut: first page only (50), enough for one project's boards and open sprints, page with startAt if a project ever has more
-            for s in parse_sprints(&self.get(&format!("{}/rest/agile/1.0/board/{b}/sprint?state=active,future", self.base)).await?) {
-                let extra = format!("jql={}&", enc(&scope));
-                tickets.extend(self.agile_issues(&format!("/rest/agile/1.0/board/{b}/sprint/{}/issue", s.id), &extra, Some(s.id)).await?);
-                if !sprints.iter().any(|x: &Sprint| x.id == s.id) {
-                    sprints.push(s);
-                }
-            }
-            let extra = format!("jql={}&", enc(&format!("{scope} AND statusCategory != Done")));
-            tickets.extend(self.agile_issues(&format!("/rest/agile/1.0/board/{b}/backlog"), &extra, None).await?);
-        }
-        let has_sprints = !sprints.is_empty();
-        tickets.extend(self.search(&search_jql(key, has_sprints)).await?);
-        let mut seen = std::collections::HashSet::new();
-        tickets.retain(|t| seen.insert(t.key.clone()));
-        Ok(JiraProject { key: key.to_string(), sprints, has_sprints, tickets })
-    }
+fn json(out: &str) -> Result<Value, String> {
+    serde_json::from_str(out).map_err(|_| "jira: unexpected acli output".into())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::forge::tests::Fake;
+
+    fn raw(name: &str) -> String {
+        std::fs::read_to_string(format!("{}/tests/fixtures/jira/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
+    }
 
     fn fixture(name: &str) -> Value {
-        let p = format!("{}/tests/fixtures/jira/{name}", env!("CARGO_MANIFEST_DIR"));
-        serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
+        serde_json::from_str(&raw(name)).unwrap()
     }
 
     #[test]
@@ -285,57 +203,69 @@ mod tests {
     }
 
     #[test]
-    fn parses_sprints_and_search_page() {
-        let s = parse_sprints(&fixture("sprints.json"));
-        assert_eq!((s[0].id, s[1].state.as_str()), (7, "future"));
-        let p = parse_page(&fixture("search.json"), "https://x.atlassian.net", None);
-        assert_eq!(p.next_token.as_deref(), Some("CAEaAggD"));
-        assert_eq!(p.tickets[0].status_category, StatusCategory::Done);
-        assert!(parse_page(&fixture("backlog.json"), "https://x", None).next_token.is_none());
-    }
-
-    #[test]
-    fn search_url_encodes_jql_and_token() {
-        let u = search_url("https://x", "project = A AND d >= -14d", Some("a+b"));
-        assert!(u.contains("jql=project%20%3D%20A%20AND%20d%20%3E%3D%20-14d"));
-        assert!(u.ends_with("&nextPageToken=a%2Bb"));
-    }
-
-    #[test]
-    fn debug_hides_token() {
-        let c = JiraClient::new("https://x", "a@b.c", "SECRET").unwrap();
-        assert!(!format!("{c:?}").contains("SECRET"));
-    }
-
-    #[test]
-    fn refuses_non_https_and_empty_url() {
-        assert_eq!(check_url("http://x.atlassian.net").unwrap_err(), "jira: https required");
-        assert_eq!(check_url("  ").unwrap_err(), "jira: not configured");
-        assert_eq!(check_url(" https://x.atlassian.net/ ").unwrap(), "https://x.atlassian.net");
-        assert!(JiraClient::new("http://x", "a", "t").is_err());
-    }
-
-    #[test]
     fn search_jql_quotes_key_and_follows_sprints() {
-        assert_eq!(search_jql("DEMO", true), "project = \"DEMO\" AND statusCategory = Done AND statusCategoryChangedDate >= -14d");
+        assert_eq!(
+            search_jql("DEMO", true),
+            "project = \"DEMO\" AND ((statusCategory != Done AND (sprint is EMPTY OR (sprint not in openSprints() AND sprint not in futureSprints()))) OR (statusCategory = Done AND statusCategoryChangedDate >= -14d))"
+        );
         assert!(search_jql("DEMO", false).contains("(statusCategory != Done OR"));
     }
 
     #[test]
-    fn board_404_means_no_board_other_errors_fail() {
-        assert!(boards_or_none(Err("jira: 404".into())).unwrap().is_empty());
-        assert_eq!(boards_or_none(Err("jira: 401".into())).unwrap_err(), "jira: 401");
-        assert_eq!(boards_or_none(Ok(fixture("boards.json"))).unwrap(), vec![42]);
+    fn reads_site_from_auth_status() {
+        let r = Fake::new(|_, _, _| Ok(raw("auth-status.txt")));
+        assert_eq!(site(&r).unwrap(), "https://example.atlassian.net");
+        assert_eq!(r.calls(), vec!["acli jira auth status"]);
+        assert_eq!(site(&Fake::new(|_, _, _| Ok("✓ Authenticated\n".into()))).unwrap_err(), "jira: unexpected auth status");
     }
 
     #[test]
-    fn page_loop_stops_on_repeat_empty_or_last() {
-        let page = |v: Value| parse_page(&v, "https://x", None);
-        let issue = serde_json::json!({"key":"A-1","fields":{}});
-        let more = page(serde_json::json!({"nextPageToken":"t","issues":[issue.clone()]}));
-        assert_eq!(next_token_to_follow(&more, &[]).as_deref(), Some("t"));
-        assert!(next_token_to_follow(&more, &["t".to_string()]).is_none());
-        assert!(next_token_to_follow(&page(serde_json::json!({"nextPageToken":"t","issues":[]})), &[]).is_none());
-        assert!(next_token_to_follow(&page(serde_json::json!({"nextPageToken":"t","isLast":true,"issues":[issue]})), &[]).is_none());
+    fn spots_logged_out_or_missing_acli() {
+        assert!(not_configured("acli: ✗ Error: unauthorized: use 'acli jira auth login' to authenticate"));
+        assert!(not_configured("acli: No such file or directory (os error 2)"));
+        assert!(!not_configured("acli: timed out"));
+    }
+
+    #[test]
+    fn me_falls_back_to_reporter_then_none() {
+        let person = |f: &str| format!(r#"[{{"key":"A-1","fields":{{"{f}":{{"accountId":"id-1","displayName":"Dev One"}}}}}}]"#);
+        let assignee = Fake::new(move |_, _, a| Ok(if a[4].starts_with("assignee") { person("assignee") } else { "[]".into() }));
+        assert_eq!(me(&assignee).unwrap().unwrap().account_id, "id-1");
+        assert_eq!(assignee.calls().len(), 1);
+        let reporter = Fake::new(move |_, _, a| Ok(if a[4].starts_with("reporter") { person("reporter") } else { "[]".into() }));
+        assert_eq!(me(&reporter).unwrap().unwrap().display_name, "Dev One");
+        assert!(me(&Fake::new(|_, _, _| Ok("[]".into()))).unwrap().is_none());
+    }
+
+    #[test]
+    fn reads_every_concatenated_page() {
+        let r = Fake::new(|_, _, a| Ok(match a[1] {
+            "board" if a[2] == "search" => raw("boards.json"),
+            "board" => raw("sprints.json"),
+            "sprint" => raw("sprint-paged.json"),
+            _ => raw("search.json"),
+        }));
+        let p = project(&r, "https://x.atlassian.net", "DEMO").unwrap();
+        assert!(p.has_sprints);
+        // DEMO-1 and DEMO-2 come from both sprints' pages, deduplicated. DEMO-3 and DEMO-4 come from the search.
+        assert_eq!(p.tickets.iter().map(|t| t.key.as_str()).collect::<Vec<_>>(), vec!["DEMO-1", "DEMO-2", "DEMO-3", "DEMO-4"]);
+        assert_eq!(p.tickets[0].sprint_id, Some(7));
+        assert_eq!(p.tickets[3].url, "https://x.atlassian.net/browse/DEMO-4");
+        assert!(r.calls().contains(&"acli jira board list-sprints --id 42 --state active,future --json".to_string()));
+        assert!(r.calls().last().unwrap().contains("--paginate --json"));
+    }
+
+    #[test]
+    fn kanban_project_searches_without_sprint_calls() {
+        let r = Fake::new(|_, _, a| Ok(if a[1] == "board" { r#"{"values":[]}"#.into() } else { raw("search.json") }));
+        let p = project(&r, "https://x", "DEMO").unwrap();
+        assert!(!p.has_sprints && p.sprints.is_empty());
+        assert_eq!(r.calls().len(), 2);
+        assert!(r.calls()[1].contains("statusCategory != Done OR"));
+    }
+
+    #[test]
+    fn garbage_output_is_an_error() {
+        assert_eq!(issues("not json").unwrap_err(), "jira: unexpected acli output");
     }
 }
